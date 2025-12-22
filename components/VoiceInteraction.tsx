@@ -131,9 +131,9 @@ const VoiceInteraction: React.FC = () => {
     <div className="fixed bottom-8 right-8 z-50">
       <button 
         onClick={isActive ? stopSession : startSession}
-        className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl glass ${isActive ? 'bg-red-500/30 scale-110' : 'bg-amber-500/20 hover:bg-amber-500/40'}`}
+        className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl glass ${isActive ? 'bg-red-500/30 scale-110' : 'bg-emerald-500/20 hover:bg-emerald-500/40'}`}
       >
-        <i className={`fas ${isActive ? 'fa-stop text-red-400' : 'fa-microphone text-amber-400'} text-xl`}></i>
+        <i className={`fas ${isActive ? 'fa-stop text-red-400' : 'fa-microphone text-emerald-400'} text-xl`}></i>
         {isActive && (
           <span className="absolute -top-1 -right-1 flex h-4 w-4">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -146,7 +146,7 @@ const VoiceInteraction: React.FC = () => {
           <p className="text-white/60 mb-2">IA Conectada. Pergunte sobre qualquer passagem ou contexto histórico.</p>
           <div className="flex gap-1">
              {[1,2,3,4,5].map(i => (
-               <div key={i} className="w-1 h-4 bg-amber-400/50 rounded-full animate-pulse" style={{ animationDelay: `${i*0.1}s` }}></div>
+               <div key={i} className="w-1 h-4 bg-emerald-400/50 rounded-full animate-pulse" style={{ animationDelay: `${i*0.1}s` }}></div>
              ))}
           </div>
         </div>

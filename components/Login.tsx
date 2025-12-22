@@ -28,7 +28,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         setError('Este usuário já existe na biblioteca.');
         return;
       }
-      // Criar novo usuário
       users[normalizedUsername] = { 
         id: normalizedUsername, 
         name: username.trim(), 
@@ -37,7 +36,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       localStorage.setItem(storageKey, JSON.stringify(users));
       onLogin({ id: normalizedUsername, name: username.trim() });
     } else {
-      // Login
       const foundUser = users[normalizedUsername];
       if (foundUser && foundUser.password === password) {
         onLogin({ id: foundUser.id, name: foundUser.name });
@@ -49,8 +47,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 animate-in fade-in duration-700">
-      <div className="glass p-10 md:p-16 rounded-[2.5rem] w-full max-w-md flex flex-col items-center text-center space-y-8 border border-white/10 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-amber-500/50 to-transparent"></div>
+      <div className="glass p-10 md:p-16 rounded-[2.5rem] w-full max-w-md flex flex-col items-center text-center space-y-8 border border-white/5 shadow-2xl relative overflow-hidden bg-gradient-to-br from-indigo-950/20 to-purple-950/20">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-emerald-400/30 to-transparent"></div>
         
         <Logo className="w-24 h-24 mb-2" />
 
@@ -69,7 +67,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Usuário"
-                className="w-full glass bg-white/5 border-white/10 text-white rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all text-center placeholder:text-white/20"
+                className="w-full glass bg-white/5 border-white/10 text-white rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-emerald-400/30 transition-all text-center placeholder:text-white/20"
                 required
               />
             </div>
@@ -79,7 +77,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Senha de Acesso"
-                className="w-full glass bg-white/5 border-white/10 text-white rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all text-center placeholder:text-white/20"
+                className="w-full glass bg-white/5 border-white/10 text-white rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-emerald-400/30 transition-all text-center placeholder:text-white/20"
                 required
               />
             </div>
@@ -93,7 +91,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
           <button
             type="submit"
-            className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-5 rounded-2xl transition-all shadow-lg shadow-amber-900/20 uppercase tracking-widest text-sm active:scale-95"
+            className="w-full bg-emerald-500/80 hover:bg-emerald-400 text-indigo-950 font-bold py-5 rounded-2xl transition-all shadow-lg shadow-emerald-500/10 uppercase tracking-widest text-sm active:scale-95"
           >
             {isRegistering ? 'Finalizar Cadastro' : 'Acessar Biblioteca'}
           </button>
@@ -105,7 +103,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               setIsRegistering(!isRegistering);
               setError('');
             }}
-            className="text-[10px] text-amber-500/60 hover:text-amber-400 uppercase tracking-widest font-bold transition-colors"
+            className="text-[10px] text-emerald-400/60 hover:text-emerald-400 uppercase tracking-widest font-bold transition-colors"
           >
             {isRegistering ? 'Já possui acesso? Entrar' : 'Não possui cadastro? Criar Conta'}
           </button>
