@@ -1,9 +1,10 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
 
 const VoiceInteraction: React.FC = () => {
   const [isActive, setIsActive] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef<number>(0);
@@ -45,11 +46,28 @@ const VoiceInteraction: React.FC = () => {
     return btoa(binary);
   };
 
-  const startSession = async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+  const stopSession = () => {
+    if (sessionRef.current) {
+      try {
+        sessionRef.current.close();
+      } catch (e) {}
+      sessionRef.current = null;
+    }
+    setIsActive(false);
+    setError(null);
+  };
 
+  const startSession = async () => {
+    setError(null);
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
     try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      } else if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
       const sessionPromise = ai.live.connect({
@@ -62,17 +80,20 @@ const VoiceInteraction: React.FC = () => {
             const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
             
             scriptProcessor.onaudioprocess = (e) => {
-              const inputData = e.inputBuffer.getChannelData(0);
-              const int16 = new Int16Array(inputData.length);
-              for (let i = 0; i < inputData.length; i++) {
-                int16[i] = inputData[i] * 32768;
+              if (sessionRef.current) {
+                const inputData = e.inputBuffer.getChannelData(0);
+                const int16 = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                  int16[i] = inputData[i] * 32768;
+                }
+                const pcmBlob = {
+                  data: encodeBase64(new Uint8Array(int16.buffer)),
+                  mimeType: 'audio/pcm;rate=16000',
+                };
+                sessionPromise.then(session => {
+                  try { session.sendRealtimeInput({ media: pcmBlob }); } catch(err) {}
+                });
               }
-              const pcmBlob = {
-                data: encodeBase64(new Uint8Array(int16.buffer)),
-                mimeType: 'audio/pcm;rate=16000',
-              };
-              // Envia somente após a promessa ser resolvida para evitar erros de conexão
-              sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
             };
             
             source.connect(scriptProcessor);
@@ -80,8 +101,8 @@ const VoiceInteraction: React.FC = () => {
           },
           onmessage: async (message: LiveServerMessage) => {
             const audioData = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (audioData) {
-              const ctx = audioContextRef.current!;
+            if (audioData && audioContextRef.current) {
+              const ctx = audioContextRef.current;
               nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
               
               const buffer = await decodeAudioData(decodeBase64(audioData), ctx, 24000, 1);
@@ -100,15 +121,18 @@ const VoiceInteraction: React.FC = () => {
               nextStartTimeRef.current = 0;
             }
           },
-          onclose: () => setIsActive(false),
-          onerror: (e) => {
-            console.error("Live AI error", e);
+          onclose: () => {
             setIsActive(false);
+          },
+          onerror: (e) => {
+            console.error("Live AI Error:", e);
+            setError("Erro na conexão com a IA.");
+            stopSession();
           }
         },
         config: {
           responseModalities: [Modality.AUDIO],
-          systemInstruction: "Aja como um mentor de estudos bíblicos erudito. Responda em Português.",
+          systemInstruction: "Você é um mentor acadêmico de estudos bíblicos. Responda com clareza e profundidade teológica em Português.",
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
           }
@@ -117,43 +141,44 @@ const VoiceInteraction: React.FC = () => {
 
       sessionRef.current = await sessionPromise;
     } catch (err) {
-      console.error("Failed to start voice session:", err);
-      alert("Erro ao acessar microfone ou conectar com a IA.");
+      console.error("Voice initialization error:", err);
+      setError("Microfone não disponível ou erro de rede.");
+      setIsActive(false);
     }
-  };
-
-  const stopSession = () => {
-    if (sessionRef.current) {
-      sessionRef.current.close();
-      sessionRef.current = null;
-    }
-    setIsActive(false);
   };
 
   return (
-    <div className="fixed bottom-8 right-8 z-50">
-      <button 
-        onClick={isActive ? stopSession : startSession}
-        className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl glass ${isActive ? 'bg-red-500/30 scale-110 border-red-500/50' : 'bg-emerald-500/20 hover:bg-emerald-500/40 border-emerald-500/30'}`}
-      >
-        <i className={`fas ${isActive ? 'fa-stop text-red-400' : 'fa-microphone text-emerald-400'} text-xl`}></i>
-        {isActive && (
-          <span className="absolute -top-1 -right-1 flex h-4 w-4">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500"></span>
-          </span>
-        )}
-      </button>
-      {isActive && (
-        <div className="absolute bottom-20 right-0 glass p-4 rounded-2xl w-64 text-xs animate-in slide-in-from-bottom-4 duration-300">
-          <p className="text-white/60 mb-2 font-serif italic">Conexão Ativa: Pergunte via áudio.</p>
-          <div className="flex gap-1">
-             {[1,2,3,4,5].map(i => (
-               <div key={i} className="w-1 h-3 bg-emerald-400/50 rounded-full animate-bounce" style={{ animationDelay: `${i*0.1}s` }}></div>
-             ))}
-          </div>
+    <div className="fixed bottom-8 right-8 z-50 flex flex-col items-end gap-4">
+      {error && (
+        <div className="glass bg-red-500/10 border-red-500/20 p-4 rounded-2xl text-[10px] text-red-400 uppercase tracking-widest animate-in fade-in slide-in-from-right-4">
+          <i className="fas fa-exclamation-triangle mr-2"></i> {error}
         </div>
       )}
+      <div className="relative">
+        <button 
+          onClick={isActive ? stopSession : startSession}
+          className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl glass border ${isActive ? 'bg-red-500/30 scale-110 border-red-500/50' : 'bg-emerald-500/20 hover:bg-emerald-500/40 border-emerald-500/30'}`}
+        >
+          <i className={`fas ${isActive ? 'fa-stop text-red-400' : 'fa-microphone text-emerald-400'} text-xl`}></i>
+          {isActive && (
+            <span className="absolute -top-1 -right-1 flex h-4 w-4">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500"></span>
+            </span>
+          )}
+        </button>
+        {isActive && (
+          <div className="absolute bottom-20 right-0 glass p-5 rounded-3xl w-72 text-xs animate-in slide-in-from-bottom-4 duration-300 shadow-2xl border-white/10">
+            <p className="text-emerald-400 font-serif italic mb-2">Mentor Conectado</p>
+            <p className="text-white/40 leading-relaxed">A IA está ouvindo. Faça sua pergunta sobre o contexto histórico ou exegese bíblica.</p>
+            <div className="flex gap-1 mt-4">
+               {[1,2,3,4,5,6].map(i => (
+                 <div key={i} className="w-1.5 h-4 bg-emerald-400/30 rounded-full animate-bounce" style={{ animationDelay: `${i*0.1}s` }}></div>
+               ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

@@ -2,9 +2,13 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ExegesisResult } from "../types";
 
+// Função utilitária para obter a instância da IA com a chave de ambiente
+const getAIInstance = () => {
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+};
+
 export const getExegesis = async (query: string): Promise<ExegesisResult> => {
-  // Inicialização direta para garantir que o segredo seja lido corretamente do ambiente
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAIInstance();
   
   try {
     const response = await ai.models.generateContent({
@@ -15,7 +19,7 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
       1. CONTEXTO DA ÉPOCA: Detalhe o ambiente sociopolítico e o "Sitz im Leben".
       2. FILOLOGIA: Analise palavras-chave no Hebraico/Grego original.
       3. ANÁLISE: Foco na intenção original do autor.
-      4. SÍNTESE: Conclua com aplicação teológica.
+      4. SÍNTESE: Conclua com aplicação teológica reformada.
       
       Responda estritamente em Português seguindo o schema JSON.`,
       config: {
@@ -50,7 +54,6 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
     const resultText = response.text || "{}";
     const result: ExegesisResult = JSON.parse(resultText);
     
-    // Extração de fontes de Grounding (Google Search)
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     if (chunks) {
       result.sources = chunks
@@ -63,8 +66,8 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
 
     return result;
   } catch (error) {
-    console.error("Exegesis service error:", error);
-    throw error;
+    console.error("Critical Exegesis Error:", error);
+    throw new Error("Falha ao conectar com o laboratório exegético. Verifique sua conexão e configurações de API.");
   }
 };
 
@@ -79,9 +82,9 @@ export const playAudio = async (
   speed: number = 1.0,
   language: string = 'Português'
 ): Promise<AudioControl | null> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAIInstance();
   try {
-    const narrationPrompt = `Aja como um professor de seminário erudito. Narre com solenidade e clareza didática: ${text}`;
+    const narrationPrompt = `Aja como um professor de seminário erudito. Narre com solenidade e clareza didática o seguinte texto em ${language}: ${text}`;
     
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -96,11 +99,10 @@ export const playAudio = async (
       },
     });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts[0]?.inlineData?.data;
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       
-      // Decodificação manual de base64 conforme diretrizes para evitar dependências externas
       const binaryString = atob(base64Audio);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
@@ -126,18 +128,18 @@ export const playAudio = async (
       };
     }
   } catch (error) {
-    console.error("Audio playback error:", error);
+    console.error("Audio Engine Error:", error);
   }
   return null;
 };
 
 export const generateHistoricalImage = async (prompt: string): Promise<string | null> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAIInstance();
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: `High-fidelity historical reconstruction, cinematic biblical atmosphere: ${prompt}` }]
+        parts: [{ text: `Historical biblical reconstruction, academic realism, 4k cinematic lighting: ${prompt}` }]
       },
       config: {
         imageConfig: { aspectRatio: "16:9" }
@@ -152,7 +154,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
       }
     }
   } catch (error) {
-    console.error("Image generation error:", error);
+    console.error("Visual Engine Error:", error);
   }
   return null;
 };
