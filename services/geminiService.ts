@@ -7,26 +7,36 @@ export interface AudioControl {
 }
 
 const callBackend = async (action: string, payload: any) => {
-  const response = await fetch('/api/exegesis', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, payload }),
-  });
+  try {
+    const response = await fetch('/api/exegesis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, payload }),
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Erro na requisição ao backend');
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorJson;
+      try {
+        errorJson = JSON.parse(errorText);
+      } catch (e) {
+        errorJson = { error: `Erro HTTP ${response.status}: ${response.statusText}` };
+      }
+      throw new Error(errorJson.details || errorJson.error || 'Erro inesperado no servidor');
+    }
+
+    return response.json();
+  } catch (error: any) {
+    console.error(`Falha na ação ${action}:`, error);
+    throw error;
   }
-
-  return response.json();
 };
 
 export const getExegesis = async (query: string): Promise<ExegesisResult> => {
   try {
     return await callBackend('getExegesis', { query });
   } catch (error: any) {
-    console.error("Exegesis Service Error:", error);
-    throw new Error("Falha ao processar exegese no servidor.");
+    throw new Error(`Erro de Exegese: ${error.message}`);
   }
 };
 
@@ -67,7 +77,7 @@ export const playAudio = async (
       };
     }
   } catch (error) {
-    console.error("Audio Service Error:", error);
+    console.error("Erro no motor de áudio:", error);
   }
   return null;
 };
@@ -77,7 +87,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
     const data = await callBackend('generateImage', { prompt });
     return data.base64 ? `data:image/png;base64,${data.base64}` : null;
   } catch (error) {
-    console.error("Image Service Error:", error);
+    console.error("Erro no motor visual:", error);
   }
   return null;
 };
