@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ExegesisResult } from "../types";
 
-// Função utilitária para obter a instância da IA com a chave de ambiente
+// Função utilitária para obter a instância da IA com a chave de ambiente atualizada
 const getAIInstance = () => {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
@@ -65,9 +65,12 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
     }
 
     return result;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Critical Exegesis Error:", error);
-    throw new Error("Falha ao conectar com o laboratório exegético. Verifique sua conexão e configurações de API.");
+    if (error.message?.includes("Requested entity was not found")) {
+      throw new Error("Requested entity was not found. Chave de API expirada ou não configurada.");
+    }
+    throw new Error("Falha ao conectar com o laboratório exegético. Verifique sua conexão.");
   }
 };
 

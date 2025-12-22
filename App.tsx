@@ -10,6 +10,7 @@ import AudioControls from './components/AudioControls.tsx';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'studies' | 'history'>('studies');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,6 +31,14 @@ const App: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(selected);
+      }
+    };
+    checkKey();
+    
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -66,38 +75,39 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
+  const handleSelectKey = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      setHasApiKey(true);
+    }
+  };
+
   const handleVoiceSearch = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitRecognition;
     if (!SpeechRecognition) {
-      alert("Reconhecimento de voz não suportado neste navegador.");
+      alert("Reconhecimento de voz não suportado.");
       return;
     }
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'pt-BR';
-    recognition.interimResults = true;
-    
     recognition.onstart = () => setIsListening(true);
     recognition.onend = () => setIsListening(false);
-    
     recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results)
-        .map((result: any) => result[0])
-        .map((result) => result.transcript)
-        .join('');
+      const transcript = event.results[0][0].transcript;
       setQuery(transcript);
-
-      if (event.results[0].isFinal) {
-        setTimeout(() => handleSearch(), 800);
-      }
+      handleSearch();
     };
-
     recognition.start();
   };
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!query.trim()) return;
+
+    if (!hasApiKey && window.aistudio) {
+      await handleSelectKey();
+    }
 
     if (activeAudioRef.current) {
       activeAudioRef.current.stop();
@@ -123,8 +133,12 @@ const App: React.FC = () => {
         imageUrl: img || undefined
       };
       setHistory(prev => [newItem, ...prev]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Search failed:", error);
+      if (error.message?.includes("Requested entity was not found") && window.aistudio) {
+        setHasApiKey(false);
+        handleSelectKey();
+      }
     } finally {
       setLoading(false);
     }
@@ -154,13 +168,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') setDeferredPrompt(null);
-  };
-
   if (!user) {
     return <Login onLogin={setUser} />;
   }
@@ -172,8 +179,30 @@ const App: React.FC = () => {
       userName={user.name} 
       onLogout={() => setUser(null)}
       deferredPrompt={deferredPrompt}
-      onInstall={handleInstallClick}
+      onInstall={() => deferredPrompt?.prompt()}
+      hasApiKey={hasApiKey}
+      onSelectKey={handleSelectKey}
     >
+      {!hasApiKey && (
+        <div className="mb-8 glass bg-amber-500/10 border-amber-500/30 p-8 rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-top duration-700">
+          <div className="flex items-center gap-6">
+            <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-500 text-2xl">
+              <i className="fas fa-key"></i>
+            </div>
+            <div>
+              <h3 className="text-amber-400 font-bold serif text-xl">Chave de Acesso Necessária</h3>
+              <p className="text-white/40 text-xs uppercase tracking-widest mt-1">Para realizar buscas avançadas no Vercel, conecte seu projeto Google Cloud.</p>
+            </div>
+          </div>
+          <button 
+            onClick={handleSelectKey}
+            className="bg-amber-500 hover:bg-amber-400 text-indigo-950 font-black px-8 py-4 rounded-full transition-all active:scale-95 text-xs uppercase tracking-widest"
+          >
+            Vincular API Key
+          </button>
+        </div>
+      )}
+
       {activeTab === 'studies' ? (
         <div className="space-y-8 animate-in slide-in-from-right duration-500">
           <section className="w-full">
