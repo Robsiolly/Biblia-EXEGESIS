@@ -54,7 +54,8 @@ export const playAudio = async (
 ): Promise<AudioControl | null> => {
   const ai = new GoogleGenAI({ apiKey: API_KEY });
   try {
-    const narrationPrompt = `Narre este estudo teológico com um tom erudito, solene e respeitoso em ${language}. A voz deve ser clara, pausada e transmitir autoridade acadêmica: ${text}`;
+    // Prompt otimizado para velocidade: removido "pausada" e adicionado "ágil" e "imediata"
+    const narrationPrompt = `Narre este texto em ${language} de forma ágil, direta e erudita. Inicie a fala imediatamente, sem silêncios: ${text}`;
     
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -66,6 +67,8 @@ export const playAudio = async (
             prebuiltVoiceConfig: { voiceName: voice },
           },
         },
+        // Adicionado para reduzir o tempo de "pensamento" do modelo TTS
+        thinkingConfig: { thinkingBudget: 0 }
       },
     });
 
@@ -91,7 +94,7 @@ export const playAudio = async (
       source.buffer = buffer;
       source.playbackRate.value = speed;
       source.connect(audioContext.destination);
-      source.start();
+      source.start(0); // Garante início imediato no tempo 0
 
       return {
         stop: () => {

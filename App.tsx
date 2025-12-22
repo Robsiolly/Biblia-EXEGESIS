@@ -1,11 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import Layout from './components/Layout';
-import Login from './components/Login';
-import { getExegesis, generateHistoricalImage, playAudio, AudioControl } from './services/geminiService';
-import { ExegesisResult, HistoryItem, User } from './types';
-import VoiceInteraction from './components/VoiceInteraction';
-import AudioControls from './components/AudioControls';
+import Layout from './components/Layout.tsx';
+import Login from './components/Login.tsx';
+import { getExegesis, generateHistoricalImage, playAudio, AudioControl } from './services/geminiService.ts';
+import { ExegesisResult, HistoryItem, User } from './types.ts';
+import VoiceInteraction from './components/VoiceInteraction.tsx';
+import AudioControls from './components/AudioControls.tsx';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
