@@ -3,63 +3,69 @@ import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ExegesisResult } from "../types";
 
 export const getExegesis = async (query: string): Promise<ExegesisResult> => {
+  // Inicialização direta para garantir que o segredo seja lido corretamente do ambiente
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: `Realize uma exegese bíblica exaustiva e acadêmica sob a lente do método gramático-histórico para: "${query}". 
-    
-    DIRETRIZES DE ESTUDO:
-    1. CONTEXTO DA ÉPOCA: Detalhe o ambiente sociopolítico, econômico e religioso (ex: domínio Romano, tensões intergrupais, arqueologia).
-    2. FILOLOGIA: Analise as palavras-chave no original (Hebraico/Grego) conectando-as ao uso na Septuaginta ou literatura contemporânea.
-    3. ANÁLISE: Execute a exegese versículo por versículo se aplicável, focando na intenção original do autor (Exegese vs Eisegese).
-    4. SÍNTESE: Conclua com a aplicação teológica reformada clássica.
-    
-    Responda estritamente em Português seguindo o schema JSON abaixo.`,
-    config: {
-      tools: [{ googleSearch: {} }],
-      // Ativando o Thinking Budget para raciocínio complexo de exegese
-      thinkingConfig: { thinkingBudget: 16384 },
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          verse: { type: Type.STRING },
-          context: { type: Type.STRING, description: "O Sitz im Leben e o panorama histórico detalhado." },
-          historicalAnalysis: { type: Type.STRING, description: "A análise técnica gramatical e contextual." },
-          theologicalInsights: { type: Type.STRING, description: "A aplicação doutrinária final." },
-          originalLanguages: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                term: { type: Type.STRING },
-                transliteration: { type: Type.STRING },
-                meaning: { type: Type.STRING }
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-preview",
+      contents: `Realize uma exegese bíblica exaustiva e acadêmica sob a lente do método gramático-histórico para: "${query}". 
+      
+      DIRETRIZES DE ESTUDO:
+      1. CONTEXTO DA ÉPOCA: Detalhe o ambiente sociopolítico e o "Sitz im Leben".
+      2. FILOLOGIA: Analise palavras-chave no Hebraico/Grego original.
+      3. ANÁLISE: Foco na intenção original do autor.
+      4. SÍNTESE: Conclua com aplicação teológica.
+      
+      Responda estritamente em Português seguindo o schema JSON.`,
+      config: {
+        tools: [{ googleSearch: {} }],
+        thinkingConfig: { thinkingBudget: 16384 },
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            verse: { type: Type.STRING },
+            context: { type: Type.STRING },
+            historicalAnalysis: { type: Type.STRING },
+            theologicalInsights: { type: Type.STRING },
+            originalLanguages: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  term: { type: Type.STRING },
+                  transliteration: { type: Type.STRING },
+                  meaning: { type: Type.STRING }
+                }
               }
-            }
+            },
+            imagePrompt: { type: Type.STRING }
           },
-          imagePrompt: { type: Type.STRING }
-        },
-        required: ["verse", "context", "historicalAnalysis", "theologicalInsights", "originalLanguages", "imagePrompt"]
+          required: ["verse", "context", "historicalAnalysis", "theologicalInsights", "originalLanguages", "imagePrompt"]
+        }
       }
+    });
+
+    const resultText = response.text || "{}";
+    const result: ExegesisResult = JSON.parse(resultText);
+    
+    // Extração de fontes de Grounding (Google Search)
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    if (chunks) {
+      result.sources = chunks
+        .filter((chunk: any) => chunk.web)
+        .map((chunk: any) => ({
+          uri: chunk.web.uri,
+          title: chunk.web.title,
+        }));
     }
-  });
 
-  const text = response.text || "{}";
-  const result: ExegesisResult = JSON.parse(text);
-  
-  const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-  if (chunks) {
-    result.sources = chunks
-      .filter((chunk: any) => chunk.web)
-      .map((chunk: any) => ({
-        uri: chunk.web.uri,
-        title: chunk.web.title,
-      }));
+    return result;
+  } catch (error) {
+    console.error("Exegesis service error:", error);
+    throw error;
   }
-
-  return result;
 };
 
 export interface AudioControl {
@@ -75,7 +81,7 @@ export const playAudio = async (
 ): Promise<AudioControl | null> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
-    const narrationPrompt = `Aja como um professor de seminário erudito. Narre o seguinte texto em ${language} com cadência solene, pausada e clareza didática: ${text}`;
+    const narrationPrompt = `Aja como um professor de seminário erudito. Narre com solenidade e clareza didática: ${text}`;
     
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -90,21 +96,21 @@ export const playAudio = async (
       },
     });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    const base64Audio = response.candidates?.[0]?.content?.parts[0]?.inlineData?.data;
     if (base64Audio) {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      
+      // Decodificação manual de base64 conforme diretrizes para evitar dependências externas
       const binaryString = atob(base64Audio);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
       
       const dataInt16 = new Int16Array(bytes.buffer);
-      const frameCount = dataInt16.length;
-      const buffer = audioContext.createBuffer(1, frameCount, 24000);
+      const buffer = audioContext.createBuffer(1, dataInt16.length, 24000);
       const channelData = buffer.getChannelData(0);
-      for (let i = 0; i < frameCount; i++) {
+      for (let i = 0; i < dataInt16.length; i++) {
         channelData[i] = dataInt16[i] / 32768.0;
       }
 
@@ -115,16 +121,12 @@ export const playAudio = async (
       source.start();
 
       return {
-        stop: () => {
-          try { source.stop(); } catch(e) {}
-        },
-        setSpeed: (s: number) => {
-          source.playbackRate.value = s;
-        }
+        stop: () => { try { source.stop(); } catch(e) {} },
+        setSpeed: (s: number) => { source.playbackRate.value = s; }
       };
     }
   } catch (error) {
-    console.error("Error playing audio:", error);
+    console.error("Audio playback error:", error);
   }
   return null;
 };
@@ -135,7 +137,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: `High-fidelity historical reconstruction, cinematic biblical atmosphere, dramatic lighting: ${prompt}. Realism focus, 4k detail.` }]
+        parts: [{ text: `High-fidelity historical reconstruction, cinematic biblical atmosphere: ${prompt}` }]
       },
       config: {
         imageConfig: { aspectRatio: "16:9" }
@@ -150,7 +152,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
       }
     }
   } catch (error) {
-    console.error("Error generating image:", error);
+    console.error("Image generation error:", error);
   }
   return null;
 };

@@ -51,7 +51,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       <div className="w-full max-w-md glass p-10 md:p-14 rounded-[3rem] border border-white/10 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-1000">
         <div className="flex flex-col items-center mb-10">
           <Logo className="w-24 h-24 mb-6" />
-          <h1 className="text-3xl font-bold tracking-tight text-white serif">EXEGESIS AI</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-white serif">EXEGESIS</h1>
           <p className="text-emerald-400/50 text-[10px] uppercase tracking-[0.4em] mt-3 font-medium">Laboratório Teológico</p>
         </div>
 

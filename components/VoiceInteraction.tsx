@@ -1,10 +1,9 @@
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
 
 const VoiceInteraction: React.FC = () => {
   const [isActive, setIsActive] = useState(false);
-  const [transcription, setTranscription] = useState('');
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef<number>(0);
@@ -29,20 +28,18 @@ const VoiceInteraction: React.FC = () => {
     return buffer;
   };
 
-  const decode = (base64: string) => {
+  const decodeBase64 = (base64: string) => {
     const binaryString = atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
     return bytes;
   };
 
-  const encode = (bytes: Uint8Array) => {
+  const encodeBase64 = (bytes: Uint8Array) => {
     let binary = '';
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
+    for (let i = 0; i < bytes.byteLength; i++) {
       binary += String.fromCharCode(bytes[i]);
     }
     return btoa(binary);
@@ -51,72 +48,78 @@ const VoiceInteraction: React.FC = () => {
   const startSession = async () => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-    const outputNode = audioContextRef.current.createGain();
-    outputNode.connect(audioContextRef.current.destination);
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    
-    const sessionPromise = ai.live.connect({
-      model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-      callbacks: {
-        onopen: () => {
-          setIsActive(true);
-          const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-          const source = inputAudioContext.createMediaStreamSource(stream);
-          const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
-          
-          scriptProcessor.onaudioprocess = (e) => {
-            const inputData = e.inputBuffer.getChannelData(0);
-            const l = inputData.length;
-            const int16 = new Int16Array(l);
-            for (let i = 0; i < l; i++) {
-              int16[i] = inputData[i] * 32768;
-            }
-            const pcmBlob = {
-              data: encode(new Uint8Array(int16.buffer)),
-              mimeType: 'audio/pcm;rate=16000',
-            };
-            sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
-          };
-          
-          source.connect(scriptProcessor);
-          scriptProcessor.connect(inputAudioContext.destination);
-        },
-        onmessage: async (message: LiveServerMessage) => {
-          if (message.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
-            const base64Audio = message.serverContent.modelTurn.parts[0].inlineData.data;
-            const ctx = audioContextRef.current!;
-            nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      const sessionPromise = ai.live.connect({
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        callbacks: {
+          onopen: () => {
+            setIsActive(true);
+            const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+            const source = inputAudioContext.createMediaStreamSource(stream);
+            const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
             
-            const buffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
-            const source = ctx.createBufferSource();
-            source.buffer = buffer;
-            source.connect(ctx.destination);
-            source.start(nextStartTimeRef.current);
-            nextStartTimeRef.current += buffer.duration;
-            sourcesRef.current.add(source);
-            source.onended = () => sourcesRef.current.delete(source);
-          }
+            scriptProcessor.onaudioprocess = (e) => {
+              const inputData = e.inputBuffer.getChannelData(0);
+              const int16 = new Int16Array(inputData.length);
+              for (let i = 0; i < inputData.length; i++) {
+                int16[i] = inputData[i] * 32768;
+              }
+              const pcmBlob = {
+                data: encodeBase64(new Uint8Array(int16.buffer)),
+                mimeType: 'audio/pcm;rate=16000',
+              };
+              // Envia somente após a promessa ser resolvida para evitar erros de conexão
+              sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
+            };
+            
+            source.connect(scriptProcessor);
+            scriptProcessor.connect(inputAudioContext.destination);
+          },
+          onmessage: async (message: LiveServerMessage) => {
+            const audioData = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            if (audioData) {
+              const ctx = audioContextRef.current!;
+              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
+              
+              const buffer = await decodeAudioData(decodeBase64(audioData), ctx, 24000, 1);
+              const source = ctx.createBufferSource();
+              source.buffer = buffer;
+              source.connect(ctx.destination);
+              source.start(nextStartTimeRef.current);
+              nextStartTimeRef.current += buffer.duration;
+              sourcesRef.current.add(source);
+              source.onended = () => sourcesRef.current.delete(source);
+            }
 
-          if (message.serverContent?.interrupted) {
-            sourcesRef.current.forEach(s => s.stop());
-            sourcesRef.current.clear();
-            nextStartTimeRef.current = 0;
+            if (message.serverContent?.interrupted) {
+              sourcesRef.current.forEach(s => { try { s.stop(); } catch(e) {} });
+              sourcesRef.current.clear();
+              nextStartTimeRef.current = 0;
+            }
+          },
+          onclose: () => setIsActive(false),
+          onerror: (e) => {
+            console.error("Live AI error", e);
+            setIsActive(false);
           }
         },
-        onclose: () => setIsActive(false),
-        onerror: (e) => console.error("Live AI error", e)
-      },
-      config: {
-        responseModalities: [Modality.AUDIO],
-        systemInstruction: "Você é um professor de exegese bíblica. Responda perguntas sobre a Bíblia e seu contexto histórico de forma gentil e erudita. Use voz clara e pausada.",
-        speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
+        config: {
+          responseModalities: [Modality.AUDIO],
+          systemInstruction: "Aja como um mentor de estudos bíblicos erudito. Responda em Português.",
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
+          }
         }
-      }
-    });
+      });
 
-    sessionRef.current = await sessionPromise;
+      sessionRef.current = await sessionPromise;
+    } catch (err) {
+      console.error("Failed to start voice session:", err);
+      alert("Erro ao acessar microfone ou conectar com a IA.");
+    }
   };
 
   const stopSession = () => {
@@ -131,9 +134,9 @@ const VoiceInteraction: React.FC = () => {
     <div className="fixed bottom-8 right-8 z-50">
       <button 
         onClick={isActive ? stopSession : startSession}
-        className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl glass ${isActive ? 'bg-red-500/30 scale-110' : 'bg-amber-500/20 hover:bg-amber-500/40'}`}
+        className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl glass ${isActive ? 'bg-red-500/30 scale-110 border-red-500/50' : 'bg-emerald-500/20 hover:bg-emerald-500/40 border-emerald-500/30'}`}
       >
-        <i className={`fas ${isActive ? 'fa-stop text-red-400' : 'fa-microphone text-amber-400'} text-xl`}></i>
+        <i className={`fas ${isActive ? 'fa-stop text-red-400' : 'fa-microphone text-emerald-400'} text-xl`}></i>
         {isActive && (
           <span className="absolute -top-1 -right-1 flex h-4 w-4">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -143,10 +146,10 @@ const VoiceInteraction: React.FC = () => {
       </button>
       {isActive && (
         <div className="absolute bottom-20 right-0 glass p-4 rounded-2xl w-64 text-xs animate-in slide-in-from-bottom-4 duration-300">
-          <p className="text-white/60 mb-2">IA Conectada. Pergunte sobre qualquer passagem ou contexto histórico.</p>
+          <p className="text-white/60 mb-2 font-serif italic">Conexão Ativa: Pergunte via áudio.</p>
           <div className="flex gap-1">
              {[1,2,3,4,5].map(i => (
-               <div key={i} className="w-1 h-4 bg-amber-400/50 rounded-full animate-pulse" style={{ animationDelay: `${i*0.1}s` }}></div>
+               <div key={i} className="w-1 h-3 bg-emerald-400/50 rounded-full animate-bounce" style={{ animationDelay: `${i*0.1}s` }}></div>
              ))}
           </div>
         </div>
