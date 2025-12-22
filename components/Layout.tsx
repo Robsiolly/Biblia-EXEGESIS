@@ -10,8 +10,6 @@ interface LayoutProps {
   onLogout: () => void;
   deferredPrompt: any;
   onInstall: () => void;
-  hasApiKey?: boolean;
-  onSelectKey?: () => void;
 }
 
 const Layout: React.FC<LayoutProps> = ({ 
@@ -21,9 +19,7 @@ const Layout: React.FC<LayoutProps> = ({
   userName, 
   onLogout,
   deferredPrompt,
-  onInstall,
-  hasApiKey,
-  onSelectKey
+  onInstall
 }) => {
   return (
     <div className="min-h-screen flex flex-col items-center p-4 md:p-8 relative overflow-x-hidden">
@@ -34,7 +30,7 @@ const Layout: React.FC<LayoutProps> = ({
             <h1 className="text-2xl font-bold tracking-tighter text-white/90 serif">EXEGESIS</h1>
             <div className="flex items-center gap-2">
               <p className="text-[10px] text-emerald-400/60 uppercase tracking-[0.2em]">{userName}</p>
-              <span className={`w-1.5 h-1.5 rounded-full ${hasApiKey ? 'bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]' : 'bg-amber-500 shadow-[0_0_5px_rgba(245,158,11,0.5)] animate-pulse'}`}></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]"></span>
             </div>
           </div>
         </div>
@@ -55,15 +51,6 @@ const Layout: React.FC<LayoutProps> = ({
         </nav>
 
         <div className="flex items-center gap-4">
-          {!hasApiKey && onSelectKey && (
-            <button 
-              onClick={onSelectKey}
-              className="text-amber-500 hover:text-amber-400 transition-colors p-3 flex items-center gap-2 text-[10px] uppercase font-bold tracking-widest"
-              title="Vincular Chave"
-            >
-              <i className="fas fa-link"></i> Link Key
-            </button>
-          )}
           {deferredPrompt && (
             <button 
               onClick={onInstall}
