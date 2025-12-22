@@ -2,32 +2,32 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ExegesisResult } from "../types";
 
-// Removed global API_KEY to ensure fresh instances use latest key
-
 export const getExegesis = async (query: string): Promise<ExegesisResult> => {
-  // Always create a new GoogleGenAI instance right before the call
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
-    contents: `Realize uma exegese bíblica acadêmica profunda sob a perspectiva Protestante Reformada (Método Gramático-Histórico) para o tema: "${query}". 
+    contents: `Realize uma exegese bíblica exaustiva e acadêmica sob a lente do método gramático-histórico para: "${query}". 
     
-    Instruções:
-    1. Foque no contexto da época (político, social, cultural).
-    2. Analise termos originais (Hebraico/Grego) de forma precisa.
-    3. Mantenha um tom sóbrio, erudito e reverente.
-    4. Gere um prompt para imagem histórica.
+    DIRETRIZES DE ESTUDO:
+    1. CONTEXTO DA ÉPOCA: Detalhe o ambiente sociopolítico, econômico e religioso (ex: domínio Romano, tensões intergrupais, arqueologia).
+    2. FILOLOGIA: Analise as palavras-chave no original (Hebraico/Grego) conectando-as ao uso na Septuaginta ou literatura contemporânea.
+    3. ANÁLISE: Execute a exegese versículo por versículo se aplicável, focando na intenção original do autor (Exegese vs Eisegese).
+    4. SÍNTESE: Conclua com a aplicação teológica reformada clássica.
     
-    Responda em Português seguindo estritamente o schema JSON.`,
+    Responda estritamente em Português seguindo o schema JSON abaixo.`,
     config: {
       tools: [{ googleSearch: {} }],
+      // Ativando o Thinking Budget para raciocínio complexo de exegese
+      thinkingConfig: { thinkingBudget: 16384 },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
           verse: { type: Type.STRING },
-          context: { type: Type.STRING, description: "Cenário histórico detalhado." },
-          historicalAnalysis: { type: Type.STRING, description: "Análise gramático-histórica." },
-          theologicalInsights: { type: Type.STRING, description: "Síntese doutrinária reformada." },
+          context: { type: Type.STRING, description: "O Sitz im Leben e o panorama histórico detalhado." },
+          historicalAnalysis: { type: Type.STRING, description: "A análise técnica gramatical e contextual." },
+          theologicalInsights: { type: Type.STRING, description: "A aplicação doutrinária final." },
           originalLanguages: {
             type: Type.ARRAY,
             items: {
@@ -49,7 +49,6 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
   const text = response.text || "{}";
   const result: ExegesisResult = JSON.parse(text);
   
-  // Extract website URLs from groundingChunks as per mandatory guidelines
   const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
   if (chunks) {
     result.sources = chunks
@@ -76,7 +75,7 @@ export const playAudio = async (
 ): Promise<AudioControl | null> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
-    const narrationPrompt = `Aja como um professor de seminário erudito. Narre o seguinte texto em ${language} com cadência solene, pausada e clareza didática. Respeite as vírgulas e pontos para criar uma atmosfera de respeito ao conhecimento: ${text}`;
+    const narrationPrompt = `Aja como um professor de seminário erudito. Narre o seguinte texto em ${language} com cadência solene, pausada e clareza didática: ${text}`;
     
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -94,7 +93,6 @@ export const playAudio = async (
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      // Implement manual decoding logic as per guidelines (no external base64 libs)
       const binaryString = atob(base64Audio);
       const len = binaryString.length;
       const bytes = new Uint8Array(len);
@@ -137,7 +135,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: `Historical cinematic hyper-realistic rendering, biblical atmosphere: ${prompt}. Muted colors, detailed textures, ancient architecture accuracy.` }]
+        parts: [{ text: `High-fidelity historical reconstruction, cinematic biblical atmosphere, dramatic lighting: ${prompt}. Realism focus, 4k detail.` }]
       },
       config: {
         imageConfig: { aspectRatio: "16:9" }
@@ -146,7 +144,6 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
 
     if (response.candidates?.[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {
-        // Find the image part as per guideline instructions
         if (part.inlineData) {
           return `data:image/png;base64,${part.inlineData.data}`;
         }
