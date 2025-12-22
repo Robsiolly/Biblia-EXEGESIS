@@ -4,16 +4,15 @@ export interface User {
   name: string;
 }
 
+export interface MapLocation {
+  title: string;
+  uri: string;
+}
+
 export interface ExegesisResult {
   verse: string;
-  context: string;
-  historicalAnalysis: string;
-  theologicalInsights: string;
-  originalLanguages: {
-    term: string;
-    transliteration: string;
-    meaning: string;
-  }[];
+  content: string; // Conteúdo principal em Markdown
+  locations: MapLocation[];
   imagePrompt: string;
 }
 

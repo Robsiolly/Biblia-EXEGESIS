@@ -1,44 +1,86 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { ExegesisResult } from "../types";
+import { ExegesisResult, MapLocation } from "../types";
 
 const API_KEY = process.env.API_KEY || "";
 
 export const getExegesis = async (query: string): Promise<ExegesisResult> => {
   const ai = new GoogleGenAI({ apiKey: API_KEY });
+  
+  // Obter localização do usuário para toolConfig se possível
+  let locationConfig = undefined;
+  try {
+    const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+    });
+    locationConfig = {
+      latLng: {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      }
+    };
+  } catch (e) {
+    console.debug("Geolocation not available or denied");
+  }
+
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: `Realize uma exegese bíblica acadêmica e profunda utilizando o método gramático-histórico para: ${query}. 
-    Foque na análise filológica, cenário histórico e cultural da época. 
-    Mantenha um tom erudito, sóbrio e rigoroso. Evite terminologias contemporâneas emocionais. Responda em Português.`,
+    model: "gemini-2.5-flash",
+    contents: `Realize uma exegese bíblica acadêmica utilizando o método gramático-histórico para: ${query}. 
+    Se houver locais geográficos mencionados, identifique-os exatamente.
+    
+    ESTRUTURA DA RESPOSTA (Use Markdown):
+    # [Referência do Versículo]
+    
+    ## Cenário da Época
+    [Descreva o contexto]
+    
+    ## Análise Filológica e Histórica
+    [Descreva a análise]
+    
+    ## Síntese Teológica
+    [Descreva os insights]
+
+    ## Prompt Visual
+    [Crie um prompt detalhado em inglês para geração de imagem histórica deste tema. Comece com "IMAGE_PROMPT: "]`,
     config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          verse: { type: Type.STRING },
-          context: { type: Type.STRING, description: "O cenário histórico e cultural baseado em fatos da época." },
-          historicalAnalysis: { type: Type.STRING, description: "Análise acadêmica do contexto temporal." },
-          theologicalInsights: { type: Type.STRING, description: "Implicações do texto baseadas em erudição clássica." },
-          originalLanguages: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                term: { type: Type.STRING },
-                transliteration: { type: Type.STRING },
-                meaning: { type: Type.STRING }
-              }
-            }
-          },
-          imagePrompt: { type: Type.STRING, description: "Prompt visual realista e histórico." }
-        },
-        required: ["verse", "context", "historicalAnalysis", "theologicalInsights", "originalLanguages", "imagePrompt"]
+      tools: [{ googleMaps: {} }, { googleSearch: {} }],
+      toolConfig: {
+        retrievalConfig: locationConfig
       }
     }
   });
 
-  return JSON.parse(response.text || "{}");
+  const fullText = response.text || "";
+  
+  // Extrair Grounding Chunks (Mapas)
+  const locations: MapLocation[] = [];
+  const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+  
+  groundingChunks.forEach((chunk: any) => {
+    if (chunk.maps) {
+      locations.push({
+        title: chunk.maps.title || "Localização Encontrada",
+        uri: chunk.maps.uri
+      });
+    }
+  });
+
+  // Extrair Verse e Image Prompt do texto
+  const verseMatch = fullText.match(/^# (.*)/m);
+  const verse = verseMatch ? verseMatch[1] : query;
+  
+  const promptMatch = fullText.match(/IMAGE_PROMPT: (.*)/);
+  const imagePrompt = promptMatch ? promptMatch[1] : `Biblical scene of ${query}`;
+
+  // Limpar o texto para remover o marcador de prompt
+  const content = fullText.replace(/IMAGE_PROMPT: .*/, "").trim();
+
+  return {
+    verse,
+    content,
+    locations,
+    imagePrompt
+  };
 };
 
 export interface AudioControl {
@@ -54,7 +96,6 @@ export const playAudio = async (
 ): Promise<AudioControl | null> => {
   const ai = new GoogleGenAI({ apiKey: API_KEY });
   try {
-    // Prompt otimizado para velocidade: removido "pausada" e adicionado "ágil" e "imediata"
     const narrationPrompt = `Narre este texto em ${language} de forma ágil, direta e erudita. Inicie a fala imediatamente, sem silêncios: ${text}`;
     
     const response = await ai.models.generateContent({
@@ -67,7 +108,6 @@ export const playAudio = async (
             prebuiltVoiceConfig: { voiceName: voice },
           },
         },
-        // Adicionado para reduzir o tempo de "pensamento" do modelo TTS
         thinkingConfig: { thinkingBudget: 0 }
       },
     });
@@ -94,7 +134,7 @@ export const playAudio = async (
       source.buffer = buffer;
       source.playbackRate.value = speed;
       source.connect(audioContext.destination);
-      source.start(0); // Garante início imediato no tempo 0
+      source.start(0);
 
       return {
         stop: () => {

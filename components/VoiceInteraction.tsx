@@ -1,10 +1,14 @@
 
-import React, { useState, useRef, useCallback } from 'react';
-import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
+import React, { useState, useRef } from 'react';
+import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from '@google/genai';
 
-const VoiceInteraction: React.FC = () => {
+interface VoiceInteractionProps {
+  onPerformSearch?: (query: string) => void;
+}
+
+const VoiceInteraction: React.FC<VoiceInteractionProps> = ({ onPerformSearch }) => {
   const [isActive, setIsActive] = useState(false);
-  const [transcription, setTranscription] = useState('');
+  const [statusMessage, setStatusMessage] = useState('IA Conectada. Pergunte sobre qualquer passagem.');
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef<number>(0);
@@ -48,6 +52,21 @@ const VoiceInteraction: React.FC = () => {
     return btoa(binary);
   };
 
+  const analyzePassageFn: FunctionDeclaration = {
+    name: 'analyzePassage',
+    description: 'Realiza uma exegese profunda e análise histórica de uma passagem bíblica ou tema teológico.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        query: {
+          type: Type.STRING,
+          description: 'A passagem bíblica (ex: João 3:16) ou o tema (ex: A Arca da Aliança) para analisar.'
+        }
+      },
+      required: ['query']
+    }
+  };
+
   const startSession = async () => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -83,6 +102,29 @@ const VoiceInteraction: React.FC = () => {
           scriptProcessor.connect(inputAudioContext.destination);
         },
         onmessage: async (message: LiveServerMessage) => {
+          // Handle tool calls (Function Calling)
+          if (message.toolCall) {
+            for (const fc of message.toolCall.functionCalls) {
+              if (fc.name === 'analyzePassage') {
+                const query = (fc.args as any).query;
+                setStatusMessage(`Analisando: ${query}...`);
+                if (onPerformSearch) {
+                  onPerformSearch(query);
+                }
+                sessionPromise.then(session => {
+                  session.sendToolResponse({
+                    functionResponses: {
+                      id: fc.id,
+                      name: fc.name,
+                      response: { result: "Iniciando análise profunda na interface principal." }
+                    }
+                  });
+                });
+              }
+            }
+          }
+
+          // Handle audio output
           if (message.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
             const base64Audio = message.serverContent.modelTurn.parts[0].inlineData.data;
             const ctx = audioContextRef.current!;
@@ -109,7 +151,8 @@ const VoiceInteraction: React.FC = () => {
       },
       config: {
         responseModalities: [Modality.AUDIO],
-        systemInstruction: "Você é um professor de exegese bíblica. Responda perguntas sobre a Bíblia e seu contexto histórico de forma gentil e erudita. Use voz clara e pausada.",
+        systemInstruction: "Você é um professor de exegese bíblica erudito e amigável. Você pode realizar exegeses profundas usando a ferramenta 'analyzePassage' quando o usuário pedir para analisar um versículo ou tema. Responda em Português, de forma sóbria e acadêmica.",
+        tools: [{ functionDeclarations: [analyzePassageFn] }],
         speechConfig: {
           voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
         }
@@ -125,15 +168,17 @@ const VoiceInteraction: React.FC = () => {
       sessionRef.current = null;
     }
     setIsActive(false);
+    setStatusMessage('IA Conectada. Pergunte sobre qualquer passagem.');
   };
 
   return (
     <div className="fixed bottom-8 right-8 z-50">
       <button 
         onClick={isActive ? stopSession : startSession}
-        className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl glass ${isActive ? 'bg-red-500/30 scale-110' : 'bg-emerald-500/20 hover:bg-emerald-500/40'}`}
+        className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl glass ${isActive ? 'bg-red-500/30 scale-110' : 'bg-emerald-500/20 hover:bg-emerald-500/40 group'}`}
+        title={isActive ? "Parar conversa" : "Conversar com o Professor de Exegese"}
       >
-        <i className={`fas ${isActive ? 'fa-stop text-red-400' : 'fa-microphone text-emerald-400'} text-xl`}></i>
+        <i className={`fas ${isActive ? 'fa-stop text-red-400' : 'fa-microphone text-emerald-400'} text-xl group-hover:scale-110 transition-transform`}></i>
         {isActive && (
           <span className="absolute -top-1 -right-1 flex h-4 w-4">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -142,13 +187,14 @@ const VoiceInteraction: React.FC = () => {
         )}
       </button>
       {isActive && (
-        <div className="absolute bottom-20 right-0 glass p-4 rounded-2xl w-64 text-xs animate-in slide-in-from-bottom-4 duration-300">
-          <p className="text-white/60 mb-2">IA Conectada. Pergunte sobre qualquer passagem ou contexto histórico.</p>
-          <div className="flex gap-1">
-             {[1,2,3,4,5].map(i => (
-               <div key={i} className="w-1 h-4 bg-emerald-400/50 rounded-full animate-pulse" style={{ animationDelay: `${i*0.1}s` }}></div>
+        <div className="absolute bottom-20 right-0 glass p-5 rounded-3xl w-72 text-xs animate-in slide-in-from-bottom-4 duration-300 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] bg-indigo-950/40">
+          <p className="text-white/80 mb-3 font-medium">{statusMessage}</p>
+          <div className="flex gap-1 items-end h-4">
+             {[1,2,3,4,5,6,7].map(i => (
+               <div key={i} className="flex-1 bg-emerald-400/50 rounded-full animate-pulse" style={{ height: `${Math.random() * 100}%`, animationDelay: `${i*0.1}s` }}></div>
              ))}
           </div>
+          <p className="text-[10px] text-white/30 mt-4 uppercase tracking-widest text-center italic">Conversa em Tempo Real</p>
         </div>
       )}
     </div>
