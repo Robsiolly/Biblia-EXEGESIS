@@ -8,9 +8,19 @@ interface LayoutProps {
   onTabChange: (tab: 'studies' | 'history') => void;
   userName: string;
   onLogout: () => void;
+  deferredPrompt: any;
+  onInstall: () => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, userName, onLogout }) => {
+const Layout: React.FC<LayoutProps> = ({ 
+  children, 
+  activeTab, 
+  onTabChange, 
+  userName, 
+  onLogout,
+  deferredPrompt,
+  onInstall
+}) => {
   return (
     <div className="min-h-screen flex flex-col items-center p-4 md:p-8 relative overflow-x-hidden">
       <header className="w-full max-w-6xl flex flex-col md:flex-row justify-between items-center mb-8 md:mb-12 glass p-4 md:p-6 rounded-2xl md:rounded-full animate-float gap-6 bg-gradient-to-r from-indigo-950/40 to-purple-950/40">
@@ -37,17 +47,40 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, userN
           </button>
         </nav>
 
-        <button 
-          onClick={onLogout}
-          className="text-[10px] text-white/20 hover:text-red-400 transition-colors uppercase tracking-widest flex items-center gap-2 px-4"
-        >
-          <i className="fas fa-sign-out-alt"></i> Sair
-        </button>
+        <div className="flex items-center gap-4">
+          {deferredPrompt && (
+            <button 
+              onClick={onInstall}
+              className="hidden md:flex items-center gap-2 bg-white/10 hover:bg-emerald-500/20 text-emerald-400 px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border border-emerald-400/30 transition-all"
+            >
+              <i className="fas fa-download"></i> Instalar App
+            </button>
+          )}
+          <button 
+            onClick={onLogout}
+            className="text-[10px] text-white/20 hover:text-red-400 transition-colors uppercase tracking-widest flex items-center gap-2 px-4"
+          >
+            <i className="fas fa-sign-out-alt"></i> Sair
+          </button>
+        </div>
       </header>
 
       <main className="w-full max-w-6xl flex-1 flex flex-col gap-8 transition-all duration-500">
         {children}
       </main>
+
+      {/* Botão de instalação mobile */}
+      {deferredPrompt && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 md:hidden w-full px-8 animate-in slide-in-from-bottom-8">
+           <button 
+             onClick={onInstall}
+             className="w-full glass bg-emerald-500 text-indigo-950 font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-2xl border border-white/20"
+           >
+             <i className="fas fa-cloud-arrow-down"></i>
+             <span className="uppercase tracking-[0.2em] text-xs">Instalar EXEGESIS</span>
+           </button>
+        </div>
+      )}
 
       <footer className="w-full max-w-6xl mt-12 py-8 border-t border-white/5 text-center text-white/10 text-[10px] uppercase tracking-widest">
         &copy; 2024 EXEGESIS - Biblioteca de Alta Erudição

@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const [result, setResult] = useState<ExegesisResult | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   // Audio states
   const [isReading, setIsReading] = useState(false);
@@ -24,6 +25,18 @@ const App: React.FC = () => {
   const [selectedLanguage, setSelectedLanguage] = useState('Português');
   const activeAudioRef = useRef<AudioControl | null>(null);
   const [selectedText, setSelectedText] = useState('');
+
+  useEffect(() => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    });
+
+    window.addEventListener('appinstalled', () => {
+      setDeferredPrompt(null);
+      console.log('PWA instalado com sucesso');
+    });
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -54,6 +67,15 @@ const App: React.FC = () => {
     document.addEventListener('mouseup', handleMouseUp);
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   const handleVoiceSearch = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -144,6 +166,8 @@ const App: React.FC = () => {
       onTabChange={setActiveTab} 
       userName={user.name} 
       onLogout={() => setUser(null)}
+      deferredPrompt={deferredPrompt}
+      onInstall={handleInstallClick}
     >
       {activeTab === 'studies' ? (
         <div className="space-y-8 animate-in slide-in-from-right duration-500">
