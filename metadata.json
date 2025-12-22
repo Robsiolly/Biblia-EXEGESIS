@@ -1,5 +1,5 @@
 {
-  "name": "EXEGESIS - Análise Bíblica Avançada",
+  "name": "Exegesis AI - Estudo Bíblico Avançado",
   "description": "Uma plataforma sofisticada de exegese bíblica e análise de contexto histórico movida por IA, com visualização de imagens, leitura em áudio e interação por voz.",
   "requestFramePermissions": [
     "camera",

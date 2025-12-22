@@ -3,23 +3,31 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
     <title>Exegesis AI - Estudo Bíblico Avançado</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#1e1b4b">
+    
+    <!-- PWA Primary Color -->
+    <meta name="theme-color" content="#064e3b">
+    
+    <!-- iOS support -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Exegesis">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3389/3389081.png">
+    
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background: radial-gradient(circle at top right, #1e1b4b, #0f172a, #2e1065);
+            background: radial-gradient(circle at top right, #1e1b4b, #0f172a, #111827);
             color: #e2e8f0;
             min-height: 100vh;
             margin: 0;
             overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
         }
         h1, h2, h3, .serif {
             font-family: 'Playfair Display', serif;
@@ -30,6 +38,9 @@
             border: 1px solid rgba(255, 255, 255, 0.08);
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
         }
+        input, select, textarea {
+            font-size: 16px !important;
+        }
         .gloss-effect {
             position: relative;
             overflow: hidden;
@@ -37,21 +48,39 @@
         .gloss-effect::before {
             content: '';
             position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
+            top: -100%;
+            left: -100%;
+            width: 300%;
+            height: 300%;
             background: linear-gradient(45deg, transparent, rgba(255,255,255,0.03), transparent);
             transform: rotate(45deg);
             pointer-events: none;
+            animation: shine 10s infinite linear;
+        }
+        @keyframes shine {
+            0% { transform: translateX(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) rotate(45deg); }
         }
         @keyframes subtle-float {
             0% { transform: translateY(0px); }
-            50% { transform: translateY(-5px); }
+            50% { transform: translateY(-8px); }
             100% { transform: translateY(0px); }
         }
         .animate-float {
-            animation: subtle-float 4s ease-in-out infinite;
+            animation: subtle-float 5s ease-in-out infinite;
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(52, 211, 153, 0.2);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(52, 211, 153, 0.4);
         }
     </style>
 <script type="importmap">
@@ -69,7 +98,6 @@
 </head>
 <body>
     <div id="root"></div>
-    <!-- Ponto de entrada crucial para o funcionamento do app -->
     <script type="module" src="index.tsx"></script>
 </body>
 </html>

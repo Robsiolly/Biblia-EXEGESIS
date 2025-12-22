@@ -2,24 +2,32 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ExegesisResult } from "../types";
 
-const API_KEY = process.env.API_KEY || "";
+// Removed global API_KEY to ensure fresh instances use latest key
 
 export const getExegesis = async (query: string): Promise<ExegesisResult> => {
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  // Always create a new GoogleGenAI instance right before the call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
-    contents: `Realize uma exegese bíblica acadêmica e profunda utilizando o método gramático-histórico para: ${query}. 
-    Foque na análise filológica, cenário histórico e cultural da época. 
-    Mantenha um tom erudito, sóbrio e rigoroso. Evite terminologias contemporâneas emocionais. Responda em Português.`,
+    contents: `Realize uma exegese bíblica acadêmica profunda sob a perspectiva Protestante Reformada (Método Gramático-Histórico) para o tema: "${query}". 
+    
+    Instruções:
+    1. Foque no contexto da época (político, social, cultural).
+    2. Analise termos originais (Hebraico/Grego) de forma precisa.
+    3. Mantenha um tom sóbrio, erudito e reverente.
+    4. Gere um prompt para imagem histórica.
+    
+    Responda em Português seguindo estritamente o schema JSON.`,
     config: {
+      tools: [{ googleSearch: {} }],
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
           verse: { type: Type.STRING },
-          context: { type: Type.STRING, description: "O cenário histórico e cultural baseado em fatos da época." },
-          historicalAnalysis: { type: Type.STRING, description: "Análise acadêmica do contexto temporal." },
-          theologicalInsights: { type: Type.STRING, description: "Implicações do texto baseadas em erudição clássica." },
+          context: { type: Type.STRING, description: "Cenário histórico detalhado." },
+          historicalAnalysis: { type: Type.STRING, description: "Análise gramático-histórica." },
+          theologicalInsights: { type: Type.STRING, description: "Síntese doutrinária reformada." },
           originalLanguages: {
             type: Type.ARRAY,
             items: {
@@ -31,14 +39,28 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
               }
             }
           },
-          imagePrompt: { type: Type.STRING, description: "Prompt visual realista e histórico." }
+          imagePrompt: { type: Type.STRING }
         },
         required: ["verse", "context", "historicalAnalysis", "theologicalInsights", "originalLanguages", "imagePrompt"]
       }
     }
   });
 
-  return JSON.parse(response.text || "{}");
+  const text = response.text || "{}";
+  const result: ExegesisResult = JSON.parse(text);
+  
+  // Extract website URLs from groundingChunks as per mandatory guidelines
+  const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+  if (chunks) {
+    result.sources = chunks
+      .filter((chunk: any) => chunk.web)
+      .map((chunk: any) => ({
+        uri: chunk.web.uri,
+        title: chunk.web.title,
+      }));
+  }
+
+  return result;
 };
 
 export interface AudioControl {
@@ -52,10 +74,9 @@ export const playAudio = async (
   speed: number = 1.0,
   language: string = 'Português'
 ): Promise<AudioControl | null> => {
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
-    // Prompt otimizado para velocidade: removido "pausada" e adicionado "ágil" e "imediata"
-    const narrationPrompt = `Narre este texto em ${language} de forma ágil, direta e erudita. Inicie a fala imediatamente, sem silêncios: ${text}`;
+    const narrationPrompt = `Aja como um professor de seminário erudito. Narre o seguinte texto em ${language} com cadência solene, pausada e clareza didática. Respeite as vírgulas e pontos para criar uma atmosfera de respeito ao conhecimento: ${text}`;
     
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -67,14 +88,13 @@ export const playAudio = async (
             prebuiltVoiceConfig: { voiceName: voice },
           },
         },
-        // Adicionado para reduzir o tempo de "pensamento" do modelo TTS
-        thinkingConfig: { thinkingBudget: 0 }
       },
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      // Implement manual decoding logic as per guidelines (no external base64 libs)
       const binaryString = atob(base64Audio);
       const len = binaryString.length;
       const bytes = new Uint8Array(len);
@@ -94,7 +114,7 @@ export const playAudio = async (
       source.buffer = buffer;
       source.playbackRate.value = speed;
       source.connect(audioContext.destination);
-      source.start(0); // Garante início imediato no tempo 0
+      source.start();
 
       return {
         stop: () => {
@@ -112,21 +132,24 @@ export const playAudio = async (
 };
 
 export const generateHistoricalImage = async (prompt: string): Promise<string | null> => {
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: `A highly detailed, realistic historical cinematic depiction of: ${prompt}. Cinematic lighting, ancient atmosphere, 4k resolution, museum quality.` }]
+        parts: [{ text: `Historical cinematic hyper-realistic rendering, biblical atmosphere: ${prompt}. Muted colors, detailed textures, ancient architecture accuracy.` }]
       },
       config: {
         imageConfig: { aspectRatio: "16:9" }
       }
     });
 
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        // Find the image part as per guideline instructions
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
       }
     }
   } catch (error) {
