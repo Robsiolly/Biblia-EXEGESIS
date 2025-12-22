@@ -28,10 +28,15 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Ignorar cache para requisições da API e do Google
+  if (event.request.url.includes('generativelanguage.googleapis.com') || 
+      event.request.url.includes('google.dev')) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((response) => {
       return response || fetch(event.request).catch(() => {
-        // Fallback para quando o usuário está offline e o recurso não está no cache
         if (event.request.mode === 'navigate') {
           return caches.match('/index.html');
         }

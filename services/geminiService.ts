@@ -2,85 +2,92 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ExegesisResult, MapLocation } from "../types";
 
-const API_KEY = process.env.API_KEY || "";
-
 export const getExegesis = async (query: string): Promise<ExegesisResult> => {
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   
-  // Obter localização do usuário para toolConfig se possível
+  // Obter localização de forma ultra-rápida ou ignorar
   let locationConfig = undefined;
   try {
-    const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+    const position = await new Promise<GeolocationPosition | null>((resolve) => {
+      if (!navigator.geolocation) return resolve(null);
+      navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { timeout: 1500 });
     });
-    locationConfig = {
-      latLng: {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude
-      }
-    };
+    
+    if (position) {
+      locationConfig = {
+        latLng: {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        }
+      };
+    }
   } catch (e) {
-    console.debug("Geolocation not available or denied");
+    console.debug("Geolocation skipped");
   }
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: `Realize uma exegese bíblica acadêmica utilizando o método gramático-histórico para: ${query}. 
-    Se houver locais geográficos mencionados, identifique-os exatamente.
-    
-    ESTRUTURA DA RESPOSTA (Use Markdown):
-    # [Referência do Versículo]
-    
-    ## Cenário da Época
-    [Descreva o contexto]
-    
-    ## Análise Filológica e Histórica
-    [Descreva a análise]
-    
-    ## Síntese Teológica
-    [Descreva os insights]
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `Realize uma exegese bíblica acadêmica profunda e análise de contexto histórico para: ${query}. 
+      Se houver locais geográficos reais mencionados, identifique-os exatamente.
+      
+      ESTRUTURA DA RESPOSTA OBRIGATÓRIA (Use Markdown):
+      # [Referência ou Título do Estudo]
+      
+      ## Cenário da Época e Contexto Histórico
+      [Descreva detalhadamente a cultura, política e sociedade da época]
+      
+      ## Análise Filológica e Gramatical
+      [Descreva a análise de termos originais se aplicável]
+      
+      ## Aplicação e Síntese Teológica
+      [Descreva os insights para hoje]
 
-    ## Prompt Visual
-    [Crie um prompt detalhado em inglês para geração de imagem histórica deste tema. Comece com "IMAGE_PROMPT: "]`,
-    config: {
-      tools: [{ googleMaps: {} }, { googleSearch: {} }],
-      toolConfig: {
-        retrievalConfig: locationConfig
+      IMAGE_PROMPT: [Crie um prompt detalhado em inglês para uma imagem realista e cinematográfica deste cenário bíblico]`,
+      config: {
+        tools: [{ googleMaps: {} }, { googleSearch: {} }],
+        toolConfig: {
+          retrievalConfig: locationConfig
+        }
       }
-    }
-  });
+    });
 
-  const fullText = response.text || "";
-  
-  // Extrair Grounding Chunks (Mapas)
-  const locations: MapLocation[] = [];
-  const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-  
-  groundingChunks.forEach((chunk: any) => {
-    if (chunk.maps) {
-      locations.push({
-        title: chunk.maps.title || "Localização Encontrada",
-        uri: chunk.maps.uri
-      });
-    }
-  });
+    const fullText = response.text || "";
+    if (!fullText) throw new Error("A IA não retornou conteúdo textual.");
+    
+    // Extrair Grounding Chunks (Mapas)
+    const locations: MapLocation[] = [];
+    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    
+    groundingChunks.forEach((chunk: any) => {
+      if (chunk.maps) {
+        locations.push({
+          title: chunk.maps.title || "Localização Arqueológica",
+          uri: chunk.maps.uri
+        });
+      }
+    });
 
-  // Extrair Verse e Image Prompt do texto
-  const verseMatch = fullText.match(/^# (.*)/m);
-  const verse = verseMatch ? verseMatch[1] : query;
-  
-  const promptMatch = fullText.match(/IMAGE_PROMPT: (.*)/);
-  const imagePrompt = promptMatch ? promptMatch[1] : `Biblical scene of ${query}`;
+    // Parsing do texto
+    const verseMatch = fullText.match(/^# (.*)/m);
+    const verse = verseMatch ? verseMatch[1] : query;
+    
+    const promptMatch = fullText.match(/IMAGE_PROMPT: (.*)/);
+    const imagePrompt = promptMatch ? promptMatch[1] : `Biblical landscape of ${query}, highly detailed, historical`;
 
-  // Limpar o texto para remover o marcador de prompt
-  const content = fullText.replace(/IMAGE_PROMPT: .*/, "").trim();
+    // Limpar o texto para remover o marcador de prompt
+    const content = fullText.replace(/IMAGE_PROMPT: .*/, "").trim();
 
-  return {
-    verse,
-    content,
-    locations,
-    imagePrompt
-  };
+    return {
+      verse,
+      content,
+      locations,
+      imagePrompt
+    };
+  } catch (error) {
+    console.error("Erro na chamada Gemini:", error);
+    throw error;
+  }
 };
 
 export interface AudioControl {
@@ -94,9 +101,9 @@ export const playAudio = async (
   speed: number = 1.0,
   language: string = 'Português'
 ): Promise<AudioControl | null> => {
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   try {
-    const narrationPrompt = `Narre este texto em ${language} de forma ágil, direta e erudita. Inicie a fala imediatamente, sem silêncios: ${text}`;
+    const narrationPrompt = `Narre este texto em ${language} de forma solene e erudita: ${text}`;
     
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -108,7 +115,6 @@ export const playAudio = async (
             prebuiltVoiceConfig: { voiceName: voice },
           },
         },
-        thinkingConfig: { thinkingBudget: 0 }
       },
     });
 
@@ -152,12 +158,12 @@ export const playAudio = async (
 };
 
 export const generateHistoricalImage = async (prompt: string): Promise<string | null> => {
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: `A highly detailed, realistic historical cinematic depiction of: ${prompt}. Cinematic lighting, ancient atmosphere, 4k resolution, museum quality.` }]
+        parts: [{ text: `A historical cinematic wide shot of ${prompt}. Masterpiece, hyper-realistic, biblical context, 8k resolution, archaeological accuracy.` }]
       },
       config: {
         imageConfig: { aspectRatio: "16:9" }

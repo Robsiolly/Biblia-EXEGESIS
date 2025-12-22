@@ -12,6 +12,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'studies' | 'history'>('studies');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [result, setResult] = useState<ExegesisResult | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -109,6 +110,7 @@ const App: React.FC = () => {
     setIsReading(false);
 
     setLoading(true);
+    setError(null);
     setResult(null);
     setImageUrl(null);
     if (!overrideQuery) setQuery(finalQuery);
@@ -129,8 +131,9 @@ const App: React.FC = () => {
       };
       
       setHistory(prev => [newItem, ...prev]);
-    } catch (error) {
-      console.error("Erro na análise:", error);
+    } catch (err: any) {
+      console.error("Erro na análise:", err);
+      setError("Não foi possível realizar o estudo agora. Verifique sua conexão ou tente um tema diferente.");
     } finally {
       setLoading(false);
     }
@@ -176,9 +179,12 @@ const App: React.FC = () => {
               <input
                 type="text"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Ex: Cafarnaum ou 'Passagem do Mar Vermelho'"
-                className="w-full glass bg-white/5 border-white/10 text-white rounded-2xl md:rounded-full py-4 md:py-5 pl-6 pr-40 md:pl-8 md:pr-56 text-base md:text-lg focus:outline-none focus:ring-2 focus:ring-emerald-400/30 transition-all shadow-2xl"
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  if (error) setError(null);
+                }}
+                placeholder="Tema, versículo ou cidade antiga..."
+                className={`w-full glass bg-white/5 border-white/10 text-white rounded-2xl md:rounded-full py-4 md:py-5 pl-6 pr-40 md:pl-8 md:pr-56 text-base md:text-lg focus:outline-none focus:ring-2 transition-all shadow-2xl ${error ? 'focus:ring-red-400/30 border-red-400/20' : 'focus:ring-emerald-400/30'}`}
               />
               <div className="absolute right-2 top-2 bottom-2 flex gap-1 md:gap-2">
                 <button 
@@ -192,7 +198,7 @@ const App: React.FC = () => {
                 <button 
                   type="submit"
                   disabled={loading}
-                  className="bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-indigo-950 font-black px-4 md:px-10 rounded-xl md:rounded-full transition-all shadow-[0_0_20px_rgba(52,211,153,0.3)] flex items-center justify-center gap-2 active:scale-95 group/btn"
+                  className="bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-indigo-950 font-black px-4 md:px-10 rounded-xl md:rounded-full transition-all shadow-[0_0_20px_rgba(52,211,153,0.3)] flex items-center justify-center gap-2 active:scale-95 group/btn disabled:opacity-50"
                 >
                   {loading ? (
                     <i className="fas fa-spinner fa-spin"></i>
@@ -205,12 +211,19 @@ const App: React.FC = () => {
                 </button>
               </div>
             </form>
+            {error && <p className="text-red-400 text-[10px] uppercase tracking-widest mt-3 ml-6 font-bold animate-in fade-in"><i className="fas fa-circle-exclamation mr-1"></i> {error}</p>}
           </section>
 
           {loading && (
             <div className="glass p-12 md:p-16 rounded-3xl flex flex-col items-center justify-center space-y-4 animate-pulse mx-2">
-              <div className="w-10 h-10 border-4 border-emerald-400/20 border-t-emerald-400 rounded-full animate-spin"></div>
-              <p className="text-white/40 font-serif italic text-sm md:text-base text-center">Mapeando coordenadas e registros arqueológicos...</p>
+              <div className="relative">
+                <div className="w-16 h-16 border-4 border-emerald-400/10 border-t-emerald-400 rounded-full animate-spin"></div>
+                <i className="fas fa-scroll absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-emerald-400/40"></i>
+              </div>
+              <div className="text-center space-y-2">
+                <p className="text-emerald-400 font-serif italic text-sm md:text-lg">Sincronizando registros históricos...</p>
+                <p className="text-white/20 text-[10px] uppercase tracking-widest">Consultando Maps Grounding & Grounding Search</p>
+              </div>
             </div>
           )}
 
@@ -243,13 +256,15 @@ const App: React.FC = () => {
                   <div className="glass p-6 md:p-14 rounded-[2rem] md:rounded-[3rem] space-y-8 gloss-effect border border-white/5 shadow-2xl bg-gradient-to-br from-indigo-950/20 to-purple-950/20">
                     <div className="flex justify-between items-center border-b border-white/5 pb-6">
                       <h2 className="text-2xl md:text-4xl font-bold text-emerald-300 serif">{result.verse}</h2>
-                      <button onClick={() => handleRead(result.content)} className="p-3 glass rounded-full hover:bg-emerald-400/20 text-emerald-400 active:scale-90"><i className="fas fa-volume-up"></i></button>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleRead(result.content)} className="p-3 glass rounded-full hover:bg-emerald-400/20 text-emerald-400 active:scale-90" title="Ler Estudo"><i className="fas fa-volume-up"></i></button>
+                      </div>
                     </div>
                     
                     <div className="prose prose-invert max-w-none text-white/70 leading-relaxed text-sm md:text-base space-y-6">
                       {result.content.split('\n\n').map((para, i) => {
-                        if (para.startsWith('#')) return <h3 key={i} className="text-xl md:text-2xl font-bold text-white/90 serif mt-8 mb-4">{para.replace(/#/g, '').trim()}</h3>;
-                        return <p key={i}>{para}</p>;
+                        if (para.startsWith('#')) return <h3 key={i} className="text-xl md:text-2xl font-bold text-white/90 serif mt-8 mb-4 border-l-4 border-emerald-500/30 pl-4">{para.replace(/#/g, '').trim()}</h3>;
+                        return <p key={i} className="animate-in fade-in duration-1000">{para}</p>;
                       })}
                     </div>
                   </div>
@@ -257,7 +272,7 @@ const App: React.FC = () => {
 
                 <div className="space-y-6">
                   {result.locations.length > 0 && (
-                    <div className="glass p-6 rounded-3xl border border-white/10 space-y-4">
+                    <div className="glass p-6 rounded-3xl border border-white/10 space-y-4 bg-emerald-950/20 animate-in slide-in-from-right duration-500">
                       <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-400 flex items-center gap-2">
                         <i className="fas fa-map-location-dot"></i> Cartografia & Geografia
                       </h3>
@@ -275,15 +290,20 @@ const App: React.FC = () => {
                           </a>
                         ))}
                       </div>
-                      <p className="text-[10px] text-white/20 italic text-center">Locais extraídos via Maps Grounding</p>
+                      <p className="text-[10px] text-white/20 italic text-center">Locais verificados via Google Maps</p>
                     </div>
                   )}
 
-                  <div className="glass p-6 rounded-3xl border border-white/5 bg-emerald-900/10">
-                    <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-400/60 mb-4">Anotações Arqueológicas</h3>
+                  <div className="glass p-6 rounded-3xl border border-white/5 bg-emerald-900/10 space-y-4">
+                    <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-400/60">Anotações Arqueológicas</h3>
                     <p className="text-[11px] text-white/40 leading-relaxed italic">
                       Os dados geográficos apresentados são fundamentados em registros cartográficos modernos sincronizados com a cronologia histórica gramatical.
                     </p>
+                    <div className="flex items-center gap-2 pt-2">
+                       <div className="h-1 flex-1 bg-white/5 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500/40 w-full animate-pulse"></div>
+                       </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -291,7 +311,7 @@ const App: React.FC = () => {
           )}
 
           {!result && !loading && (
-            <div className="glass p-12 md:p-20 rounded-[2rem] md:rounded-[3rem] text-center space-y-6 md:space-y-8 border border-white/5 bg-gradient-to-br from-indigo-950/20 to-purple-950/20 mx-2">
+            <div className="glass p-12 md:p-20 rounded-[2rem] md:rounded-[3rem] text-center space-y-6 md:space-y-8 border border-white/5 bg-gradient-to-br from-indigo-950/20 to-purple-950/20 mx-2 shadow-inner">
               <i className="fas fa-feather-pointed text-5xl md:text-7xl text-emerald-400/10"></i>
               <div className="space-y-2">
                 <h2 className="text-xl md:text-4xl font-serif text-white/70">Mesa de Estudos</h2>
@@ -317,7 +337,13 @@ const App: React.FC = () => {
               {history.map((item) => (
                 <div 
                   key={item.id} 
-                  className="glass p-5 md:p-6 rounded-2xl md:rounded-3xl border border-white/5 hover:bg-emerald-400/5 transition-all group flex flex-col justify-between"
+                  className="glass p-5 md:p-6 rounded-2xl md:rounded-3xl border border-white/5 hover:bg-emerald-400/5 transition-all group flex flex-col justify-between cursor-pointer"
+                  onClick={() => {
+                    setResult(item.result);
+                    setImageUrl(item.imageUrl || null);
+                    setActiveTab('studies');
+                    setQuery(item.query);
+                  }}
                 >
                   <div className="space-y-3 md:space-y-4">
                     {item.imageUrl && (
@@ -326,22 +352,14 @@ const App: React.FC = () => {
                       </div>
                     )}
                     <h3 className="text-emerald-300 font-bold text-base md:text-lg line-clamp-2">{item.query}</h3>
-                    <p className="text-white/40 text-[10px] md:text-xs line-clamp-2">{item.result.verse}</p>
+                    <p className="text-white/40 text-[10px] md:text-xs line-clamp-2 italic">{item.result.verse}</p>
                   </div>
                   
                   <div className="flex justify-between items-center mt-4 md:mt-6 pt-3 md:pt-4 border-t border-white/5">
                     <span className="text-[9px] md:text-[10px] text-white/20">{new Date(item.timestamp).toLocaleDateString()}</span>
-                    <button 
-                      onClick={() => {
-                        setResult(item.result);
-                        setImageUrl(item.imageUrl || null);
-                        setActiveTab('studies');
-                        setQuery(item.query);
-                      }}
-                      className="text-[10px] md:text-xs text-emerald-400/60 hover:text-emerald-300 font-bold uppercase tracking-widest"
-                    >
-                      Revisitar <i className="fas fa-arrow-right ml-1"></i>
-                    </button>
+                    <span className="text-[10px] md:text-xs text-emerald-400/60 hover:text-emerald-300 font-bold uppercase tracking-widest flex items-center gap-1">
+                      Revisitar <i className="fas fa-arrow-right text-[8px]"></i>
+                    </span>
                   </div>
                 </div>
               ))}
