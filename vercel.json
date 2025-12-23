@@ -1,7 +1,6 @@
 
 {
-  "framework": "vite",
-  "outputDirectory": "dist",
+  "version": 2,
   "rewrites": [
     {
       "source": "/api/(.*)",
