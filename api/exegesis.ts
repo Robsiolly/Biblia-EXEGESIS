@@ -2,7 +2,7 @@ import { GoogleGenAI, Type, Modality } from "@google/genai";
 
 /**
  * Handler para Netlify Functions.
- * O nome do arquivo (exegesis.ts) determina o endpoint: /.netlify/functions/exegesis
+ * O arquivo api/exegesis.ts se torna a função "exegesis".
  */
 export const handler = async (event: any) => {
   const headers = {
@@ -12,12 +12,12 @@ export const handler = async (event: any) => {
     "Access-Control-Allow-Methods": "POST, OPTIONS"
   };
 
-  // Resposta para Preflight (CORS)
+  // Preflight para CORS
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
 
-  // Apenas POST é permitido para as ações da IA
+  // Apenas POST é aceito
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -28,35 +28,28 @@ export const handler = async (event: any) => {
 
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    console.error("ERRO: API_KEY não configurada no ambiente do Netlify.");
+    console.error("API_KEY não configurada no Netlify");
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: 'Configuração Incompleta: API_KEY ausente.' }),
+      body: JSON.stringify({ error: 'Configuração ausente: API_KEY no ambiente.' }),
     };
   }
 
   try {
     const body = JSON.parse(event.body || '{}');
     const { action, payload } = body;
-
-    if (!action) {
-      return { 
-        statusCode: 400, 
-        headers, 
-        body: JSON.stringify({ error: 'Ação não especificada.' }) 
-      };
-    }
-
+    
+    // Inicializa o cliente Gemini
     const ai = new GoogleGenAI({ apiKey });
 
     switch (action) {
       case 'getExegesis':
         const exegesisRes = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
-          contents: `Realize uma exegese técnica e histórica profunda para: "${payload?.query}". Foque no contexto original e filologia.`,
+          contents: `Forneça uma exegese técnica e histórica profunda sobre: "${payload?.query}". Foque na cultura da época e línguas originais.`,
           config: {
-            systemInstruction: "Você é um professor de exegese bíblica. Responda APENAS com JSON puro seguindo o schema fornecido. Seja acadêmico e preciso.",
+            systemInstruction: "Você é um perito acadêmico em exegese bíblica e arqueologia. Responda APENAS com JSON puro seguindo o esquema estruturado.",
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
@@ -82,22 +75,23 @@ export const handler = async (event: any) => {
             }
           }
         });
+        
         return { 
           statusCode: 200, 
           headers, 
-          body: exegesisRes.text 
+          body: exegesisRes.text || "{}" 
         };
 
       case 'generateImage':
         const imgRes = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
-          contents: { parts: [{ text: `Cinematic biblical historical reconstruction, high detail, 4k: ${payload?.prompt}` }] }
+          contents: { parts: [{ text: `Reconstrução histórica bíblica cinematográfica: ${payload?.prompt}` }] }
         });
-        const img = imgRes.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+        const imgPart = imgRes.candidates?.[0]?.content?.parts.find(p => p.inlineData);
         return { 
           statusCode: 200, 
           headers, 
-          body: JSON.stringify({ base64: img?.inlineData?.data || "" }) 
+          body: JSON.stringify({ base64: imgPart?.inlineData?.data || "" }) 
         };
 
       case 'generateTTS':
@@ -113,28 +107,28 @@ export const handler = async (event: any) => {
             }
           }
         });
-        const audio = ttsRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        const audioData = ttsRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
         return { 
           statusCode: 200, 
           headers, 
-          body: JSON.stringify({ base64: audio || "" }) 
+          body: JSON.stringify({ base64: audioData || "" }) 
         };
 
       default:
         return { 
           statusCode: 400, 
           headers, 
-          body: JSON.stringify({ error: 'Ação desconhecida.' }) 
+          body: JSON.stringify({ error: 'Ação inválida.' }) 
         };
     }
   } catch (err: any) {
-    console.error("Erro na função exegesis:", err);
+    console.error("Erro na função:", err);
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({ 
-        error: 'Erro interno no servidor.', 
-        message: err.message 
+        error: 'Erro no processamento da IA', 
+        details: err.message 
       }),
     };
   }
