@@ -2,18 +2,15 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ExegesisResult } from "../types";
 
-// Fallback manual caso o Vercel não injete a variável de ambiente corretamente
+// Fallback manual para garantir funcionamento imediato
 const HARDCODED_KEY = "AIzaSyBWM5U5JaDhVN45ZXMFnbuL0GW4fI5xqm0";
 
-const getAI = () => {
-  // Tenta pegar do ambiente (Vercel), se for a string literal ou vazio, usa a hardcoded
+const getApiKey = () => {
   let apiKey = process.env.API_KEY;
-  
-  if (!apiKey || apiKey === "process.env.API_KEY" || apiKey.length < 10) {
-    apiKey = HARDCODED_KEY;
+  if (!apiKey || apiKey === "process.env.API_KEY" || apiKey.trim() === "") {
+    return HARDCODED_KEY;
   }
-  
-  return new GoogleGenAI({ apiKey });
+  return apiKey;
 };
 
 export interface AudioControl {
@@ -52,13 +49,14 @@ const decodeRawPCM = async (
 
 export const getExegesis = async (query: string): Promise<ExegesisResult> => {
   try {
-    const ai = getAI();
-    // Usando gemini-2.5-flash-lite-latest para máxima compatibilidade global
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    
+    // Usando o modelo correto para tarefas de texto: gemini-3-flash-preview
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-lite-latest',
-      contents: `Analise exegética profunda: "${query}". Foco em contexto histórico, geográfico e linguístico.`,
+      model: 'gemini-3-flash-preview',
+      contents: `Realize uma análise exegética e de contexto histórico profundo para: "${query}".`,
       config: {
-        systemInstruction: "Você é um PhD em Teologia e Arqueologia Bíblica. Responda APENAS em JSON. Seja acadêmico e preciso.",
+        systemInstruction: "Você é um acadêmico PhD em Teologia Bíblica e História da Antiguidade. Responda estritamente em JSON.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -87,46 +85,58 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
     });
 
     const text = response.text;
-    if (!text) throw new Error("A IA não retornou dados. Verifique sua cota da API.");
+    if (!text) throw new Error("A IA retornou uma resposta vazia.");
     return JSON.parse(text) as ExegesisResult;
   } catch (error: any) {
-    console.error("DEBUG API GOOGLE:", error);
-    // Extrai a mensagem de erro real para o usuário
-    const errMsg = error.message || "Erro de conexão com o servidor da Google.";
-    if (errMsg.includes("API key not valid")) throw new Error("CHAVE DE API INVÁLIDA. Verifique se copiou corretamente.");
-    if (errMsg.includes("429")) throw new Error("LIMITE DE COTAS EXCEDIDO. Tente novamente em 60 segundos.");
-    throw new Error(errMsg);
+    console.error("Erro na API Gemini:", error);
+    // Tratamento de erro específico para facilitar o diagnóstico
+    if (error.message?.includes("not found")) {
+      throw new Error("Erro de Configuração de Modelo. O servidor não reconheceu o modelo gemini-3-flash-preview.");
+    }
+    throw new Error(error.message || "Erro inesperado ao processar exegese.");
   }
 };
 
 export const generateHistoricalImage = async (prompt: string): Promise<string | null> => {
   try {
-    const ai = getAI();
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: { parts: [{ text: `Archaeological biblical scene: ${prompt}. Oil painting style.` }] },
-      config: { imageConfig: { aspectRatio: "16:9" } }
+      contents: { 
+        parts: [{ text: `High quality archaeological reconstruction, biblical period, museum style, realistic: ${prompt}` }] 
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: "16:9"
+        }
+      }
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
     }
     return null;
   } catch (error) {
-    console.warn("Imagem não gerada:", error);
+    console.warn("Falha na geração de imagem:", error);
     return null;
   }
 };
 
 export const playAudio = async (text: string, voice: string = 'Kore'): Promise<AudioControl | null> => {
   try {
-    const ai = getAI();
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: voice },
+          },
+        },
       },
     });
 
@@ -135,12 +145,21 @@ export const playAudio = async (text: string, voice: string = 'Kore'): Promise<A
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       const bytes = decodeBase64(base64Audio);
       const audioBuffer = await decodeRawPCM(bytes, audioContext, 24000, 1);
+      
       const source = audioContext.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioContext.destination);
       source.start();
-      return { stop: () => source.stop(), setSpeed: (s) => { source.playbackRate.value = s; } };
+
+      return {
+        stop: () => { try { source.stop(); } catch(e) {} },
+        setSpeed: (s: number) => { 
+          if (source) source.playbackRate.value = s; 
+        }
+      };
     }
-  } catch (e) { console.error("Erro Áudio:", e); }
+  } catch (error) {
+    console.error("Erro no áudio:", error);
+  }
   return null;
 };
