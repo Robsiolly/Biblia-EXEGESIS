@@ -1,31 +1,39 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 
-export const config = {
-  maxDuration: 60, 
-};
-
-export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método não permitido' });
+export const handler = async (event: any) => {
+  // Apenas permitir requisições POST
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      body: JSON.stringify({ error: 'Método não permitido' }),
+    };
   }
 
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'Configuração Incompleta', details: 'A variável API_KEY não foi encontrada no ambiente da Vercel.' });
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ 
+        error: 'Erro de Configuração', 
+        details: 'A variável API_KEY não foi encontrada no ambiente do Netlify. Verifique as configurações do site.' 
+      }),
+    };
   }
 
-  const { action, payload } = req.body;
   const ai = new GoogleGenAI({ apiKey });
-
+  
   try {
+    const { action, payload } = JSON.parse(event.body);
+
     switch (action) {
       case 'getExegesis':
-        const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: `Analise exgeticamente: "${payload.query}". Forneça contexto histórico, termos originais e insights teológicos.`,
+        // Usando gemini-3-flash-preview para evitar timeouts no Netlify (limite de 10s)
+        const exegesisResponse = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: `Analise a consulta bíblica: "${payload.query}". Foque no contexto histórico e linguístico da época.`,
           config: {
-            thinkingConfig: { thinkingBudget: 1000 },
+            systemInstruction: "Você é um mestre em exegese bíblica e arqueologia. Responda estritamente em JSON.",
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
@@ -41,45 +49,78 @@ export default async function handler(req: any, res: any) {
                     properties: {
                       term: { type: Type.STRING },
                       transliteration: { type: Type.STRING },
-                      meaning: { type: Type.STRING }
-                    }
+                      meaning: { type: Type.STRING },
+                    },
+                    required: ["term", "transliteration", "meaning"],
                   }
                 },
-                imagePrompt: { type: Type.STRING }
+                imagePrompt: { type: Type.STRING },
               },
-              required: ["verse", "context", "historicalAnalysis", "theologicalInsights", "originalLanguages", "imagePrompt"]
+              required: ["verse", "context", "historicalAnalysis", "theologicalInsights", "originalLanguages", "imagePrompt"],
             }
           }
         });
-        return res.status(200).json(JSON.parse(response.text || "{}"));
+
+        return {
+          statusCode: 200,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(JSON.parse(exegesisResponse.text || "{}")),
+        };
 
       case 'generateImage':
-        const imageRes = await ai.models.generateContent({
+        const imageResponse = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
-          contents: { parts: [{ text: `High quality biblical reconstruction: ${payload.prompt}` }] },
+          contents: { parts: [{ text: `Biblical historical reconstruction, cinematic: ${payload.prompt}` }] },
           config: { imageConfig: { aspectRatio: "16:9" } }
         });
-        const imagePart = imageRes.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-        return res.status(200).json({ base64: imagePart?.inlineData?.data || null });
+        
+        let b64Image = "";
+        if (imageResponse.candidates?.[0]?.content?.parts) {
+          for (const part of imageResponse.candidates[0].content.parts) {
+            if (part.inlineData) {
+              b64Image = part.inlineData.data;
+              break;
+            }
+          }
+        }
+        return {
+          statusCode: 200,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base64: b64Image }),
+        };
 
       case 'generateTTS':
-        const ttsRes = await ai.models.generateContent({
+        const ttsResponse = await ai.models.generateContent({
           model: "gemini-2.5-flash-preview-tts",
           contents: [{ parts: [{ text: payload.text }] }],
           config: {
             responseModalities: [Modality.AUDIO],
             speechConfig: {
-              voiceConfig: { prebuiltVoiceConfig: { voiceName: payload.voice || 'Kore' } },
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: payload.voice || 'Kore' },
+              },
             },
           },
         });
-        const audioData = ttsRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        return res.status(200).json({ base64: audioData || null });
+        
+        const b64Audio = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        return {
+          statusCode: 200,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base64: b64Audio }),
+        };
 
       default:
-        return res.status(400).json({ error: 'Ação inválida' });
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ error: 'Ação inválida' }),
+        };
     }
   } catch (err: any) {
-    return res.status(500).json({ error: 'Erro na IA', details: err.message });
+    console.error("Erro na API:", err);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Erro de processamento', details: err.message }),
+    };
   }
-}
+};

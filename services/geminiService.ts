@@ -14,59 +14,67 @@ const callBackend = async (action: string, payload: any) => {
       body: JSON.stringify({ action, payload }),
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      const errorText = await response.text();
-      let errorJson;
-      try {
-        errorJson = JSON.parse(errorText);
-      } catch (e) {
-        errorJson = { error: `Erro HTTP ${response.status}: ${response.statusText}` };
-      }
-      throw new Error(errorJson.details || errorJson.error || 'Erro inesperado no servidor');
+      throw new Error(data.details || data.error || `Erro HTTP ${response.status}`);
     }
 
-    return response.json();
+    return data;
   } catch (error: any) {
-    console.error(`Falha na ação ${action}:`, error);
+    console.error(`Falha na API:`, error);
     throw error;
   }
 };
 
 export const getExegesis = async (query: string): Promise<ExegesisResult> => {
-  try {
-    return await callBackend('getExegesis', { query });
-  } catch (error: any) {
-    throw new Error(`Erro de Exegese: ${error.message}`);
+  return await callBackend('getExegesis', { query });
+};
+
+const decodeBase64 = (base64: string): Uint8Array => {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
   }
+  return bytes;
+};
+
+const decodeRawPCM = async (
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> => {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
 };
 
 export const playAudio = async (
   text: string, 
   voice: string = 'Kore', 
-  speed: number = 1.0,
-  language: string = 'Português'
+  speed: number = 1.0
 ): Promise<AudioControl | null> => {
   try {
-    const data = await callBackend('generateTTS', { text, voice, language });
+    const data = await callBackend('generateTTS', { text, voice });
     
     if (data.base64) {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
+      const bytes = decodeBase64(data.base64);
+      const audioBuffer = await decodeRawPCM(bytes, audioContext, 24000, 1);
       
-      const binaryString = atob(data.base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      
-      const dataInt16 = new Int16Array(bytes.buffer);
-      const buffer = audioContext.createBuffer(1, dataInt16.length, 24000);
-      const channelData = buffer.getChannelData(0);
-      for (let i = 0; i < dataInt16.length; i++) {
-        channelData[i] = dataInt16[i] / 32768.0;
-      }
-
       const source = audioContext.createBufferSource();
-      source.buffer = buffer;
+      source.buffer = audioBuffer;
       source.playbackRate.value = speed;
       source.connect(audioContext.destination);
       source.start();
@@ -77,7 +85,7 @@ export const playAudio = async (
       };
     }
   } catch (error) {
-    console.error("Erro no motor de áudio:", error);
+    console.error("Erro no áudio Gemini:", error);
   }
   return null;
 };
@@ -87,7 +95,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
     const data = await callBackend('generateImage', { prompt });
     return data.base64 ? `data:image/png;base64,${data.base64}` : null;
   } catch (error) {
-    console.error("Erro no motor visual:", error);
+    console.error("Erro visual Gemini:", error);
   }
   return null;
 };
