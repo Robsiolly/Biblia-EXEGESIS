@@ -6,8 +6,8 @@ export interface AudioControl {
 }
 
 /**
- * Chama o backend centralizado no Netlify.
- * Lê o corpo da resposta apenas uma vez para evitar erros de stream.
+ * Chama o backend centralizado. 
+ * Em produção no Netlify, /api/exegesis é redirecionado para a função exegesis.
  */
 const callBackend = async (action: string, payload: any) => {
   try {
@@ -19,19 +19,18 @@ const callBackend = async (action: string, payload: any) => {
       body: JSON.stringify({ action, payload }),
     });
 
-    // LER O CORPO APENAS UMA VEZ
     const responseText = await response.text();
     
     let data;
     try {
       data = JSON.parse(responseText);
     } catch (e) {
-      console.error("Servidor não retornou JSON:", responseText);
-      throw new Error(`Resposta inválida do servidor (${response.status})`);
+      console.error("Resposta do servidor não é JSON:", responseText);
+      throw new Error(`Erro de comunicação com o servidor AI.`);
     }
 
     if (!response.ok) {
-      throw new Error(data?.details || data?.error || `Erro HTTP ${response.status}`);
+      throw new Error(data?.details || data?.error || `Erro do servidor (${response.status})`);
     }
 
     return data;
