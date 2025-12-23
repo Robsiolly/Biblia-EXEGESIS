@@ -4,31 +4,29 @@ import { ExegesisResult } from "../types";
 
 /**
  * SERVIÇO DE CONEXÃO COM GOOGLE GEMINI API
- * Versão: 2.2.0 - Alta Estabilidade
+ * Versão: 2.3.0 - Resiliência e Gestão de Chave
  */
 
-const FALLBACK_KEY = "AIzaSyBWM5U5JaDhVN45ZXMFnbuL0GW4fI5xqm0";
-
 const getApiKey = () => {
-  const envKey = process.env.API_KEY;
-  if (!envKey || envKey === "" || envKey === "process.env.API_KEY") {
-    return FALLBACK_KEY;
+  // A plataforma injeta automaticamente a chave selecionada em process.env.API_KEY
+  const key = process.env.API_KEY;
+  if (!key || key === "process.env.API_KEY" || key.trim() === "") {
+    // Retornamos vazio para que o app saiba que precisa disparar o fluxo de seleção
+    return "";
   }
-  return envKey;
+  return key;
 };
 
-// Função de utilidade para re-tentativa com espera (Exponential Backoff)
-const fetchWithRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
+const fetchWithRetry = async <T>(fn: () => Promise<T>, retries = 2, delay = 1500): Promise<T> => {
   try {
     return await fn();
   } catch (error: any) {
     const isRetryable = error.message?.includes("500") || 
                         error.message?.includes("503") || 
-                        error.message?.includes("429") ||
                         error.message?.includes("fetch");
     
+    // Se for erro de cota (429), não tentamos de novo automaticamente, pois a cota demora a resetar
     if (retries > 0 && isRetryable) {
-      console.warn(`Instabilidade detectada. Tentando novamente em ${delay}ms... (${retries} tentativas restantes)`);
       await new Promise(resolve => setTimeout(resolve, delay));
       return fetchWithRetry(fn, retries - 1, delay * 2);
     }
@@ -72,14 +70,16 @@ const decodeRawPCM = async (
 
 export const getExegesis = async (query: string): Promise<ExegesisResult> => {
   return fetchWithRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error("Chave de API não configurada. Por favor, conecte sua chave.");
     
-    // MODELO: gemini-3-pro-preview (Superior para tarefas complexas de exegese)
+    const ai = new GoogleGenAI({ apiKey });
+    
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      contents: `Forneça uma exegese teológica exaustiva e análise contextual histórica para: "${query}".`,
+      contents: `Realize uma exegese acadêmica e profunda para: "${query}".`,
       config: {
-        systemInstruction: "Você é um professor PhD em Exegese Bíblica e Arqueologia do Oriente Médio. Sua resposta deve ser exclusivamente em formato JSON válido.",
+        systemInstruction: "Você é um professor PhD em Teologia Bíblica e Arqueologia. Responda APENAS em JSON.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -108,18 +108,21 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
     });
 
     const text = response.text;
-    if (!text) throw new Error("A IA retornou um corpo de texto vazio.");
+    if (!text) throw new Error("Resposta da IA vazia.");
     return JSON.parse(text) as ExegesisResult;
   });
 };
 
 export const generateHistoricalImage = async (prompt: string): Promise<string | null> => {
   return fetchWithRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    const apiKey = getApiKey();
+    if (!apiKey) return null;
+
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: { 
-        parts: [{ text: `Authentic biblical era archaeological reconstruction, high resolution, historical accuracy: ${prompt}` }] 
+        parts: [{ text: `Authentic archaeological reconstruction, biblical period, cinematic realism: ${prompt}` }] 
       },
       config: {
         imageConfig: {
@@ -134,12 +137,15 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
       }
     }
     return null;
-  }).catch(() => null); // Imagem é opcional, não trava o app se falhar após retentativas
+  }).catch(() => null);
 };
 
 export const playAudio = async (text: string, voice: string = 'Kore'): Promise<AudioControl | null> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    const apiKey = getApiKey();
+    if (!apiKey) return null;
+
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text }] }],
@@ -156,11 +162,7 @@ export const playAudio = async (text: string, voice: string = 'Kore'): Promise<A
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      
-      // Garante que o AudioContext esteja ativo (browsers bloqueiam auto-play)
-      if (audioContext.state === 'suspended') {
-        await audioContext.resume();
-      }
+      if (audioContext.state === 'suspended') await audioContext.resume();
 
       const bytes = decodeBase64(base64Audio);
       const audioBuffer = await decodeRawPCM(bytes, audioContext, 24000, 1);
@@ -172,13 +174,11 @@ export const playAudio = async (text: string, voice: string = 'Kore'): Promise<A
 
       return {
         stop: () => { try { source.stop(); } catch(e) {} },
-        setSpeed: (s: number) => { 
-          if (source) source.playbackRate.value = s; 
-        }
+        setSpeed: (s: number) => { if (source) source.playbackRate.value = s; }
       };
     }
   } catch (error) {
-    console.error("Falha na reprodução de áudio:", error);
+    console.error("Falha TTS:", error);
   }
   return null;
 };

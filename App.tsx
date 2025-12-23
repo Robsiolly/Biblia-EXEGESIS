@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [hasKey, setHasKey] = useState<boolean>(true);
 
   const [isReading, setIsReading] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState('Kore');
@@ -29,6 +30,14 @@ const App: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasKey(selected);
+      }
+    };
+    checkKey();
+    
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -48,6 +57,14 @@ const App: React.FC = () => {
       localStorage.setItem(`exegesis_history_${user.id}`, JSON.stringify(history));
     }
   }, [history, user]);
+
+  const handleSelectKey = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      setHasKey(true);
+      setApiError(null);
+    }
+  };
 
   const handleVoiceSearch = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -102,6 +119,10 @@ const App: React.FC = () => {
     } catch (error: any) {
       console.error("Erro Capturado no UI:", error);
       setApiError(error.message);
+      // Se a cota estourou ou a chave sumiu, forçamos o aviso de chave
+      if (error.message?.includes("quota") || error.message?.includes("RESOURCE_EXHAUSTED") || error.message?.includes("not found")) {
+        setHasKey(false);
+      }
     } finally {
       setLoading(false);
     }
@@ -132,6 +153,41 @@ const App: React.FC = () => {
   };
 
   if (!user) return <Login onLogin={setUser} />;
+
+  if (!hasKey) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-[#0a0a1a]">
+        <div className="w-full max-w-lg glass p-10 md:p-16 rounded-[3rem] text-center space-y-8 animate-in zoom-in duration-500">
+          <Logo className="w-20 h-20 mx-auto" />
+          <div className="space-y-4">
+            <h2 className="text-3xl font-bold text-white serif">Chave de API Necessária</h2>
+            <p className="text-white/60 text-sm leading-relaxed">
+              Para garantir uma experiência de alta performance e sem limites de cota, você precisa conectar sua própria chave do Google Gemini.
+            </p>
+            <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 text-[10px] text-emerald-400/60 uppercase tracking-widest">
+              Recomendado: Chave de projeto com faturamento (Billing)
+            </div>
+          </div>
+          <div className="space-y-4">
+            <button 
+              onClick={handleSelectKey}
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-indigo-950 font-black py-5 rounded-2xl transition-all shadow-xl shadow-emerald-900/20 uppercase tracking-[0.2em] text-xs"
+            >
+              Conectar Minha Chave
+            </button>
+            <a 
+              href="https://ai.google.dev/gemini-api/docs/billing" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="block text-[10px] text-white/30 hover:text-white/50 uppercase tracking-widest transition-colors"
+            >
+              Saiba mais sobre faturamento e cotas <i className="fas fa-external-link-alt ml-1"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Layout 
@@ -177,11 +233,16 @@ const App: React.FC = () => {
           {apiError && (
             <div className="glass bg-red-500/10 border-red-500/20 p-8 rounded-[2.5rem] flex items-start gap-4 animate-in shake duration-500">
               <i className="fas fa-triangle-exclamation text-red-400 text-2xl mt-1"></i>
-              <div className="space-y-2">
-                <h3 className="text-red-400 font-bold uppercase tracking-widest text-xs">Falha na Conexão Teológica</h3>
-                <p className="text-white/60 text-sm leading-relaxed">{apiError}</p>
-                <div className="pt-2 text-[10px] text-white/30 italic">
-                  Dica: Se estiver no Vercel, certifique-se de ter feito o <b>Redeploy</b> após salvar sua API_KEY.
+              <div className="space-y-2 flex-1">
+                <h3 className="text-red-400 font-bold uppercase tracking-widest text-xs">Limite de Cota Atingido</h3>
+                <p className="text-white/60 text-sm leading-relaxed">Sua chave atual esgotou os recursos permitidos pela Google para o modelo Pro.</p>
+                <div className="pt-4">
+                  <button 
+                    onClick={handleSelectKey}
+                    className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all"
+                  >
+                    Trocar Chave de API
+                  </button>
                 </div>
               </div>
             </div>

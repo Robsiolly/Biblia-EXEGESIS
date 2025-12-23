@@ -21,6 +21,12 @@ const Layout: React.FC<LayoutProps> = ({
   deferredPrompt,
   onInstall
 }) => {
+  const handleOpenKey = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center p-4 md:p-8 relative overflow-x-hidden">
       <header className="w-full max-w-6xl flex flex-col md:flex-row justify-between items-center mb-12 glass p-6 rounded-3xl md:rounded-full animate-float gap-6 bg-gradient-to-r from-indigo-950/40 to-purple-950/40">
@@ -50,7 +56,16 @@ const Layout: React.FC<LayoutProps> = ({
           </button>
         </nav>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4">
+          <button 
+            onClick={handleOpenKey}
+            className="text-white/40 hover:text-emerald-400 transition-all p-3 flex flex-col items-center gap-1 group"
+            title="Gestão de Chave API"
+          >
+            <i className="fas fa-key text-xs group-hover:rotate-12 transition-transform"></i>
+            <span className="text-[8px] uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">Chave</span>
+          </button>
+          
           {deferredPrompt && (
             <button 
               onClick={onInstall}
