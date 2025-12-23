@@ -2,8 +2,14 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ExegesisResult } from "../types";
 
-// Inicialização segura usando a variável de ambiente obrigatória
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+// Inicialização segura
+const getAI = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API_KEY não encontrada. Verifique as configurações do ambiente.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 export interface AudioControl {
   stop: () => void;
@@ -51,10 +57,10 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          verse: { type: Type.STRING, description: "Referência bíblica principal" },
-          context: { type: Type.STRING, description: "Contexto histórico e social da época" },
-          historicalAnalysis: { type: Type.STRING, description: "Análise crítica e arqueológica" },
-          theologicalInsights: { type: Type.STRING, description: "Significado teológico e aplicação" },
+          verse: { type: Type.STRING },
+          context: { type: Type.STRING },
+          historicalAnalysis: { type: Type.STRING },
+          theologicalInsights: { type: Type.STRING },
           originalLanguages: {
             type: Type.ARRAY,
             items: {
@@ -67,7 +73,7 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
               required: ["term", "transliteration", "meaning"]
             }
           },
-          imagePrompt: { type: Type.STRING, description: "Prompt visual para gerar uma imagem histórica realística" },
+          imagePrompt: { type: Type.STRING },
         },
         required: ["verse", "context", "historicalAnalysis", "theologicalInsights", "originalLanguages", "imagePrompt"],
       }
@@ -75,7 +81,7 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
   });
 
   const text = response.text;
-  if (!text) throw new Error("A IA não retornou dados válidos.");
+  if (!text) throw new Error("A IA não retornou dados de texto.");
   return JSON.parse(text) as ExegesisResult;
 };
 
@@ -85,7 +91,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: `Historical reconstruction, archaeological accuracy, cinematic lighting, biblical times, high detail: ${prompt}` }]
+        parts: [{ text: `Digital matte painting, historical biblical reconstruction, cinematic lighting, 8k resolution, archaeological detail: ${prompt}` }]
       },
       config: {
         imageConfig: {
@@ -94,14 +100,16 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
       }
     });
 
+    if (!response.candidates?.[0]?.content?.parts) return null;
+
     for (const part of response.candidates[0].content.parts) {
       if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
       }
     }
     return null;
   } catch (error) {
-    console.error("Erro ao gerar imagem:", error);
+    console.error("Falha na geração de imagem:", error);
     return null;
   }
 };
@@ -115,7 +123,7 @@ export const playAudio = async (
     const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Leia com tom acadêmico e solene: ${text}` }] }],
+      contents: [{ parts: [{ text: `Leia com solenidade acadêmica: ${text}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -146,7 +154,7 @@ export const playAudio = async (
       };
     }
   } catch (error) {
-    console.error("Erro na síntese de voz:", error);
+    console.error("Erro no TTS:", error);
   }
   return null;
 };
