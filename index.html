@@ -8,8 +8,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#064e3b">
+    <script>
+      // Polyfill para evitar erro de 'process is not defined' em ambientes estáticos como GitHub Pages
+      window.process = window.process || { env: {} };
+    </script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -43,7 +47,6 @@
 </head>
 <body>
     <div id="root"></div>
-    <!-- Alterado para caminho relativo ./ para compatibilidade com GitHub Pages -->
     <script type="module" src="./index.tsx"></script>
 </body>
 </html>

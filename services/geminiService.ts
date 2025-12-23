@@ -2,10 +2,13 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ExegesisResult } from "../types";
 
+// Helper function to initialize Google GenAI using the environment variable API_KEY
 const getAI = () => {
+  // Always use process.env.API_KEY directly as mandated by coding guidelines
   const apiKey = process.env.API_KEY;
+  
   if (!apiKey) {
-    throw new Error("API_KEY não configurada.");
+    throw new Error("Chave de API não detectada. Certifique-se de que a variável de ambiente API_KEY está configurada.");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -15,6 +18,7 @@ export interface AudioControl {
   setSpeed: (speed: number) => void;
 }
 
+// Manual base64 decoding implementation as required for audio streaming
 const decodeBase64 = (base64: string): Uint8Array => {
   const binaryString = atob(base64);
   const len = binaryString.length;
@@ -25,6 +29,7 @@ const decodeBase64 = (base64: string): Uint8Array => {
   return bytes;
 };
 
+// Raw PCM audio decoding logic based on GenAI SDK documentation
 const decodeRawPCM = async (
   data: Uint8Array,
   ctx: AudioContext,
@@ -47,12 +52,12 @@ const decodeRawPCM = async (
 export const getExegesis = async (query: string): Promise<ExegesisResult> => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    // Using gemini-3-pro-preview for complex reasoning and academic tasks
+    model: 'gemini-3-pro-preview',
     contents: `Realize uma exegese bíblica e análise de contexto da época sobre: "${query}".`,
     config: {
-      systemInstruction: `Você é um historiador e teólogo. Forneça uma análise profunda. 
-      Sempre inclua o JSON no formato especificado. 
-      Use ferramentas de busca se necessário para detalhes arqueológicos recentes.`,
+      systemInstruction: `Você é um historiador e teólogo erudito. Forneça uma análise profunda e acadêmica. 
+      Retorne sempre um JSON válido conforme o esquema. Use Google Search para validar fatos arqueológicos recentes.`,
       responseMimeType: "application/json",
       tools: [{ googleSearch: {} }],
       responseSchema: {
@@ -81,12 +86,13 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
     }
   });
 
+  // Directly access .text property as per guidelines (not a method call)
   const text = response.text;
-  if (!text) throw new Error("A IA não retornou o conteúdo esperado.");
+  if (!text) throw new Error("Falha na comunicação com o motor de IA.");
   
   const result = JSON.parse(text) as ExegesisResult;
   
-  // Extrair fontes da fundamentação (grounding)
+  // Extract URLs from groundingChunks when googleSearch tool is used
   const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
   if (groundingChunks) {
     result.sources = groundingChunks
@@ -103,8 +109,7 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
 export const generateHistoricalImage = async (prompt: string): Promise<string | null> => {
   try {
     const ai = getAI();
-    // Prompt otimizado para evitar restrições de segurança de rostos reais e focar em arte/arqueologia
-    const safetyPrompt = `Historical digital painting of ${prompt}. Ancient architectural style, archaeological reconstruction, cinematic lighting, 8k, detailed textures. No modern elements.`;
+    const safetyPrompt = `Historical archaeological reconstruction of: ${prompt}. Cinematic lighting, museum quality detail, ancient textures, 8k resolution. Artistic style: Oil painting or realistic digital matte painting.`;
     
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
@@ -120,6 +125,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
 
     if (!response.candidates?.[0]?.content?.parts) return null;
 
+    // Iterate through parts to find the image part specifically
     for (const part of response.candidates[0].content.parts) {
       if (part.inlineData) {
         return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
@@ -127,7 +133,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
     }
     return null;
   } catch (error) {
-    console.error("Erro na imagem:", error);
+    console.error("Geração de imagem ignorada:", error);
     return null;
   }
 };
@@ -152,10 +158,12 @@ export const playAudio = async (
       },
     });
 
+    // Access the generated audio data from parts[0].inlineData.data
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       const bytes = decodeBase64(base64Audio);
+      // Decode raw PCM data returned by the API
       const audioBuffer = await decodeRawPCM(bytes, audioContext, 24000, 1);
       
       const source = audioContext.createBufferSource();
@@ -172,7 +180,7 @@ export const playAudio = async (
       };
     }
   } catch (error) {
-    console.error("Erro no TTS:", error);
+    console.error("Erro na síntese de áudio:", error);
   }
   return null;
 };
