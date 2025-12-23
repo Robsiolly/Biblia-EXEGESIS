@@ -1,4 +1,3 @@
-
 import { ExegesisResult } from "../types";
 
 export interface AudioControl {
@@ -10,14 +9,24 @@ const callBackend = async (action: string, payload: any) => {
   try {
     const response = await fetch('/api/exegesis', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ action, payload }),
     });
+
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
+      console.error("Resposta não-JSON recebida:", text);
+      throw new Error("O servidor não retornou um JSON válido. Verifique se as funções do Netlify estão configuradas.");
+    }
 
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.details || data.error || `Erro HTTP ${response.status}`);
+      throw new Error(data.details || data.error || `Erro do Servidor (${response.status})`);
     }
 
     return data;

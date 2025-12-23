@@ -1,11 +1,21 @@
-
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 
 export const handler = async (event: any) => {
-  // Apenas permitir requisições POST
+  const headers = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "POST, OPTION"
+  };
+
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 200, headers, body: '' };
+  }
+
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
+      headers,
       body: JSON.stringify({ error: 'Método não permitido' }),
     };
   }
@@ -14,9 +24,10 @@ export const handler = async (event: any) => {
   if (!apiKey) {
     return {
       statusCode: 500,
+      headers,
       body: JSON.stringify({ 
         error: 'Erro de Configuração', 
-        details: 'A variável API_KEY não foi encontrada no ambiente do Netlify. Verifique as configurações do site.' 
+        details: 'A variável API_KEY não foi configurada no Netlify.' 
       }),
     };
   }
@@ -24,16 +35,15 @@ export const handler = async (event: any) => {
   const ai = new GoogleGenAI({ apiKey });
   
   try {
-    const { action, payload } = JSON.parse(event.body);
+    const { action, payload } = JSON.parse(event.body || '{}');
 
     switch (action) {
       case 'getExegesis':
-        // Usando gemini-3-flash-preview para evitar timeouts no Netlify (limite de 10s)
         const exegesisResponse = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
-          contents: `Analise a consulta bíblica: "${payload.query}". Foque no contexto histórico e linguístico da época.`,
+          contents: `Analise a consulta bíblica: "${payload.query}". Foque no contexto histórico, arqueológico e termos originais.`,
           config: {
-            systemInstruction: "Você é um mestre em exegese bíblica e arqueologia. Responda estritamente em JSON.",
+            systemInstruction: "Você é um mestre em exegese bíblica. Responda estritamente com um objeto JSON válido, sem markdown.",
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
@@ -63,29 +73,28 @@ export const handler = async (event: any) => {
 
         return {
           statusCode: 200,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(JSON.parse(exegesisResponse.text || "{}")),
+          headers,
+          body: exegesisResponse.text || '{}',
         };
 
       case 'generateImage':
         const imageResponse = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
-          contents: { parts: [{ text: `Biblical historical reconstruction, cinematic: ${payload.prompt}` }] },
+          contents: { parts: [{ text: `High quality historical biblical reconstruction: ${payload.prompt}` }] },
           config: { imageConfig: { aspectRatio: "16:9" } }
         });
         
         let b64Image = "";
-        if (imageResponse.candidates?.[0]?.content?.parts) {
-          for (const part of imageResponse.candidates[0].content.parts) {
-            if (part.inlineData) {
-              b64Image = part.inlineData.data;
-              break;
-            }
+        const parts = imageResponse.candidates?.[0]?.content?.parts || [];
+        for (const part of parts) {
+          if (part.inlineData) {
+            b64Image = part.inlineData.data;
+            break;
           }
         }
         return {
           statusCode: 200,
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({ base64: b64Image }),
         };
 
@@ -106,20 +115,22 @@ export const handler = async (event: any) => {
         const b64Audio = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
         return {
           statusCode: 200,
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({ base64: b64Audio }),
         };
 
       default:
         return {
           statusCode: 400,
+          headers,
           body: JSON.stringify({ error: 'Ação inválida' }),
         };
     }
   } catch (err: any) {
-    console.error("Erro na API:", err);
+    console.error("Erro interno na função:", err);
     return {
       statusCode: 500,
+      headers,
       body: JSON.stringify({ error: 'Erro de processamento', details: err.message }),
     };
   }
