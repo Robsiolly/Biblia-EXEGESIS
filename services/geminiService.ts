@@ -5,39 +5,38 @@ export interface AudioControl {
   setSpeed: (speed: number) => void;
 }
 
+/**
+ * Chama o backend centralizado no Netlify.
+ * Lê o corpo da resposta apenas uma vez para evitar erros de stream.
+ */
 const callBackend = async (action: string, payload: any) => {
   try {
     const response = await fetch('/api/exegesis', {
       method: 'POST',
       headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ action, payload }),
     });
 
-    const contentType = response.headers.get("content-type");
+    // LER O CORPO APENAS UMA VEZ
+    const responseText = await response.text();
     
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error("Servidor não retornou JSON:", responseText);
+      throw new Error(`Resposta inválida do servidor (${response.status})`);
+    }
+
     if (!response.ok) {
-      let errorText = "";
-      try {
-        const errorJson = await response.json();
-        errorText = errorJson.details || errorJson.error;
-      } catch (e) {
-        errorText = await response.text();
-      }
-      throw new Error(errorText || `Erro do Servidor (${response.status})`);
+      throw new Error(data?.details || data?.error || `Erro HTTP ${response.status}`);
     }
 
-    if (!contentType || !contentType.includes("application/json")) {
-      const rawText = await response.text();
-      console.error("Servidor retornou algo que não é JSON:", rawText);
-      throw new Error("O servidor não respondeu com JSON. Verifique se as funções do backend foram publicadas corretamente.");
-    }
-
-    return await response.json();
+    return data;
   } catch (error: any) {
-    console.error(`Falha no GeminiService [${action}]:`, error);
+    console.error(`Erro no GeminiService [${action}]:`, error.message);
     throw error;
   }
 };
@@ -83,7 +82,7 @@ export const playAudio = async (
   try {
     const data = await callBackend('generateTTS', { text, voice });
     
-    if (data.base64) {
+    if (data && data.base64) {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
       const bytes = decodeBase64(data.base64);
       const audioBuffer = await decodeRawPCM(bytes, audioContext, 24000, 1);
@@ -96,11 +95,13 @@ export const playAudio = async (
 
       return {
         stop: () => { try { source.stop(); } catch(e) {} },
-        setSpeed: (s: number) => { source.playbackRate.value = s; }
+        setSpeed: (s: number) => { 
+          if (source) source.playbackRate.value = s; 
+        }
       };
     }
   } catch (error) {
-    console.error("Erro ao reproduzir áudio:", error);
+    console.error("Falha ao reproduzir áudio:", error);
   }
   return null;
 };
@@ -108,9 +109,9 @@ export const playAudio = async (
 export const generateHistoricalImage = async (prompt: string): Promise<string | null> => {
   try {
     const data = await callBackend('generateImage', { prompt });
-    return data.base64 ? `data:image/png;base64,${data.base64}` : null;
+    return data && data.base64 ? `data:image/png;base64,${data.base64}` : null;
   } catch (error) {
-    console.error("Erro ao gerar imagem:", error);
+    console.error("Falha ao gerar imagem:", error);
     return null;
   }
 };

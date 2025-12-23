@@ -1,55 +1,62 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 
+/**
+ * Handler para Netlify Functions.
+ * O nome do arquivo (exegesis.ts) determina o endpoint: /.netlify/functions/exegesis
+ */
 export const handler = async (event: any) => {
   const headers = {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "POST, OPTIONS"
   };
 
-  // Trata pre-flight do CORS
+  // Resposta para Preflight (CORS)
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
 
+  // Apenas POST é permitido para as ações da IA
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
       headers,
-      body: JSON.stringify({ error: 'Método não permitido. Use POST.' }),
+      body: JSON.stringify({ error: 'Método não permitido.' }),
     };
   }
 
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
+    console.error("ERRO: API_KEY não configurada no ambiente do Netlify.");
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ 
-        error: 'Chave de API ausente', 
-        details: 'A variável de ambiente API_KEY não foi configurada no servidor.' 
-      }),
+      body: JSON.stringify({ error: 'Configuração Incompleta: API_KEY ausente.' }),
     };
   }
 
-  const ai = new GoogleGenAI({ apiKey });
-  
   try {
-    const body = event.body ? JSON.parse(event.body) : {};
+    const body = JSON.parse(event.body || '{}');
     const { action, payload } = body;
 
     if (!action) {
-      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Nenhuma ação especificada.' }) };
+      return { 
+        statusCode: 400, 
+        headers, 
+        body: JSON.stringify({ error: 'Ação não especificada.' }) 
+      };
     }
+
+    const ai = new GoogleGenAI({ apiKey });
 
     switch (action) {
       case 'getExegesis':
-        const exegesisResponse = await ai.models.generateContent({
+        const exegesisRes = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
-          contents: `Realize uma exegese profunda de: "${payload.query}". Inclua contexto histórico, filologia e aplicação teológica.`,
+          contents: `Realize uma exegese técnica e histórica profunda para: "${payload?.query}". Foque no contexto original e filologia.`,
           config: {
-            systemInstruction: "Você é um professor de teologia e arqueologia bíblica. Responda apenas com JSON puro, sem blocos de markdown ou explicações externas.",
+            systemInstruction: "Você é um professor de exegese bíblica. Responda APENAS com JSON puro seguindo o schema fornecido. Seja acadêmico e preciso.",
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
@@ -66,8 +73,7 @@ export const handler = async (event: any) => {
                       term: { type: Type.STRING },
                       transliteration: { type: Type.STRING },
                       meaning: { type: Type.STRING },
-                    },
-                    required: ["term", "transliteration", "meaning"],
+                    }
                   }
                 },
                 imagePrompt: { type: Type.STRING },
@@ -76,65 +82,60 @@ export const handler = async (event: any) => {
             }
           }
         });
-
-        return {
-          statusCode: 200,
-          headers,
-          body: exegesisResponse.text || JSON.stringify({ error: "Resposta vazia do modelo" }),
+        return { 
+          statusCode: 200, 
+          headers, 
+          body: exegesisRes.text 
         };
 
       case 'generateImage':
-        const imageResponse = await ai.models.generateContent({
+        const imgRes = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
-          contents: { parts: [{ text: `Historical reconstruction in 4k, realistic: ${payload.prompt}` }] },
-          config: { imageConfig: { aspectRatio: "16:9" } }
+          contents: { parts: [{ text: `Cinematic biblical historical reconstruction, high detail, 4k: ${payload?.prompt}` }] }
         });
-        
-        const part = imageResponse.candidates?.[0]?.content?.parts.find(p => p.inlineData);
-        if (!part) throw new Error("Imagem não gerada pelo modelo.");
-
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ base64: part.inlineData?.data }),
+        const img = imgRes.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+        return { 
+          statusCode: 200, 
+          headers, 
+          body: JSON.stringify({ base64: img?.inlineData?.data || "" }) 
         };
 
       case 'generateTTS':
-        const ttsResponse = await ai.models.generateContent({
+        const ttsRes = await ai.models.generateContent({
           model: "gemini-2.5-flash-preview-tts",
-          contents: [{ parts: [{ text: payload.text }] }],
+          contents: [{ parts: [{ text: payload?.text }] }],
           config: {
             responseModalities: [Modality.AUDIO],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: payload.voice || 'Kore' },
-              },
-            },
-          },
+            speechConfig: { 
+              voiceConfig: { 
+                prebuiltVoiceConfig: { voiceName: payload?.voice || 'Kore' } 
+              } 
+            }
+          }
         });
-        
-        const audioData = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (!audioData) throw new Error("Áudio não gerado pelo modelo.");
-
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ base64: audioData }),
+        const audio = ttsRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        return { 
+          statusCode: 200, 
+          headers, 
+          body: JSON.stringify({ base64: audio || "" }) 
         };
 
       default:
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({ error: 'Ação desconhecida' }),
+        return { 
+          statusCode: 400, 
+          headers, 
+          body: JSON.stringify({ error: 'Ação desconhecida.' }) 
         };
     }
   } catch (err: any) {
-    console.error("Erro na API:", err);
+    console.error("Erro na função exegesis:", err);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: 'Falha interna', details: err.message }),
+      body: JSON.stringify({ 
+        error: 'Erro interno no servidor.', 
+        message: err.message 
+      }),
     };
   }
 };
