@@ -17,21 +17,27 @@ const callBackend = async (action: string, payload: any) => {
     });
 
     const contentType = response.headers.get("content-type");
-    if (!contentType || !contentType.includes("application/json")) {
-      const text = await response.text();
-      console.error("Resposta não-JSON recebida:", text);
-      throw new Error("O servidor não retornou um JSON válido. Verifique se as funções do Netlify estão configuradas.");
-    }
-
-    const data = await response.json();
-
+    
     if (!response.ok) {
-      throw new Error(data.details || data.error || `Erro do Servidor (${response.status})`);
+      let errorText = "";
+      try {
+        const errorJson = await response.json();
+        errorText = errorJson.details || errorJson.error;
+      } catch (e) {
+        errorText = await response.text();
+      }
+      throw new Error(errorText || `Erro do Servidor (${response.status})`);
     }
 
-    return data;
+    if (!contentType || !contentType.includes("application/json")) {
+      const rawText = await response.text();
+      console.error("Servidor retornou algo que não é JSON:", rawText);
+      throw new Error("O servidor não respondeu com JSON. Verifique se as funções do backend foram publicadas corretamente.");
+    }
+
+    return await response.json();
   } catch (error: any) {
-    console.error(`Falha na API:`, error);
+    console.error(`Falha no GeminiService [${action}]:`, error);
     throw error;
   }
 };
@@ -94,7 +100,7 @@ export const playAudio = async (
       };
     }
   } catch (error) {
-    console.error("Erro no áudio Gemini:", error);
+    console.error("Erro ao reproduzir áudio:", error);
   }
   return null;
 };
@@ -104,7 +110,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
     const data = await callBackend('generateImage', { prompt });
     return data.base64 ? `data:image/png;base64,${data.base64}` : null;
   } catch (error) {
-    console.error("Erro visual Gemini:", error);
+    console.error("Erro ao gerar imagem:", error);
+    return null;
   }
-  return null;
 };

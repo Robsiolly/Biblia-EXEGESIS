@@ -5,9 +5,10 @@ export const handler = async (event: any) => {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "POST, OPTION"
+    "Access-Control-Allow-Methods": "POST, OPTIONS"
   };
 
+  // Trata pre-flight do CORS
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
@@ -16,7 +17,7 @@ export const handler = async (event: any) => {
     return {
       statusCode: 405,
       headers,
-      body: JSON.stringify({ error: 'Método não permitido' }),
+      body: JSON.stringify({ error: 'Método não permitido. Use POST.' }),
     };
   }
 
@@ -26,8 +27,8 @@ export const handler = async (event: any) => {
       statusCode: 500,
       headers,
       body: JSON.stringify({ 
-        error: 'Erro de Configuração', 
-        details: 'A variável API_KEY não foi configurada no Netlify.' 
+        error: 'Chave de API ausente', 
+        details: 'A variável de ambiente API_KEY não foi configurada no servidor.' 
       }),
     };
   }
@@ -35,15 +36,20 @@ export const handler = async (event: any) => {
   const ai = new GoogleGenAI({ apiKey });
   
   try {
-    const { action, payload } = JSON.parse(event.body || '{}');
+    const body = event.body ? JSON.parse(event.body) : {};
+    const { action, payload } = body;
+
+    if (!action) {
+      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Nenhuma ação especificada.' }) };
+    }
 
     switch (action) {
       case 'getExegesis':
         const exegesisResponse = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
-          contents: `Analise a consulta bíblica: "${payload.query}". Foque no contexto histórico, arqueológico e termos originais.`,
+          contents: `Realize uma exegese profunda de: "${payload.query}". Inclua contexto histórico, filologia e aplicação teológica.`,
           config: {
-            systemInstruction: "Você é um mestre em exegese bíblica. Responda estritamente com um objeto JSON válido, sem markdown.",
+            systemInstruction: "Você é um professor de teologia e arqueologia bíblica. Responda apenas com JSON puro, sem blocos de markdown ou explicações externas.",
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
@@ -74,28 +80,23 @@ export const handler = async (event: any) => {
         return {
           statusCode: 200,
           headers,
-          body: exegesisResponse.text || '{}',
+          body: exegesisResponse.text || JSON.stringify({ error: "Resposta vazia do modelo" }),
         };
 
       case 'generateImage':
         const imageResponse = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
-          contents: { parts: [{ text: `High quality historical biblical reconstruction: ${payload.prompt}` }] },
+          contents: { parts: [{ text: `Historical reconstruction in 4k, realistic: ${payload.prompt}` }] },
           config: { imageConfig: { aspectRatio: "16:9" } }
         });
         
-        let b64Image = "";
-        const parts = imageResponse.candidates?.[0]?.content?.parts || [];
-        for (const part of parts) {
-          if (part.inlineData) {
-            b64Image = part.inlineData.data;
-            break;
-          }
-        }
+        const part = imageResponse.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+        if (!part) throw new Error("Imagem não gerada pelo modelo.");
+
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({ base64: b64Image }),
+          body: JSON.stringify({ base64: part.inlineData?.data }),
         };
 
       case 'generateTTS':
@@ -112,26 +113,28 @@ export const handler = async (event: any) => {
           },
         });
         
-        const b64Audio = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        const audioData = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (!audioData) throw new Error("Áudio não gerado pelo modelo.");
+
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({ base64: b64Audio }),
+          body: JSON.stringify({ base64: audioData }),
         };
 
       default:
         return {
           statusCode: 400,
           headers,
-          body: JSON.stringify({ error: 'Ação inválida' }),
+          body: JSON.stringify({ error: 'Ação desconhecida' }),
         };
     }
   } catch (err: any) {
-    console.error("Erro interno na função:", err);
+    console.error("Erro na API:", err);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: 'Erro de processamento', details: err.message }),
+      body: JSON.stringify({ error: 'Falha interna', details: err.message }),
     };
   }
 };
