@@ -2,15 +2,23 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ExegesisResult } from "../types";
 
-// Fallback manual para garantir funcionamento imediato
-const HARDCODED_KEY = "AIzaSyBWM5U5JaDhVN45ZXMFnbuL0GW4fI5xqm0";
+/**
+ * SERVIÇO DE CONEXÃO COM GOOGLE GEMINI API
+ * Versão: 2.1.0 - Estável
+ */
+
+const FALLBACK_KEY = "AIzaSyBWM5U5JaDhVN45ZXMFnbuL0GW4fI5xqm0";
 
 const getApiKey = () => {
-  let apiKey = process.env.API_KEY;
-  if (!apiKey || apiKey === "process.env.API_KEY" || apiKey.trim() === "") {
-    return HARDCODED_KEY;
+  // Tenta obter do ambiente do Vercel/Vite
+  const envKey = process.env.API_KEY;
+  
+  // Verifica se a chave é válida (não vazia e não é o nome da própria variável)
+  if (!envKey || envKey === "" || envKey === "process.env.API_KEY") {
+    console.warn("Utilizando chave de fallback. Verifique as variáveis de ambiente no Vercel.");
+    return FALLBACK_KEY;
   }
-  return apiKey;
+  return envKey;
 };
 
 export interface AudioControl {
@@ -51,12 +59,12 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
   try {
     const ai = new GoogleGenAI({ apiKey: getApiKey() });
     
-    // Usando o modelo correto para tarefas de texto: gemini-3-flash-preview
+    // MODELO: gemini-3-flash-preview (Oficial para tarefas de texto e lógica)
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Realize uma análise exegética e de contexto histórico profundo para: "${query}".`,
+      contents: `Realize uma exegese teológica profunda e análise de contexto histórico da época para: "${query}".`,
       config: {
-        systemInstruction: "Você é um acadêmico PhD em Teologia Bíblica e História da Antiguidade. Responda estritamente em JSON.",
+        systemInstruction: "Você é um especialista em línguas originais bíblicas (Hebraico, Aramaico e Grego) e Arqueologia. Responda estritamente em JSON.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -85,25 +93,31 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
     });
 
     const text = response.text;
-    if (!text) throw new Error("A IA retornou uma resposta vazia.");
+    if (!text) throw new Error("Resposta da IA vazia.");
     return JSON.parse(text) as ExegesisResult;
   } catch (error: any) {
-    console.error("Erro na API Gemini:", error);
-    // Tratamento de erro específico para facilitar o diagnóstico
-    if (error.message?.includes("not found")) {
-      throw new Error("Erro de Configuração de Modelo. O servidor não reconheceu o modelo gemini-3-flash-preview.");
+    console.error("Erro Crítico Gemini API:", error);
+    const apiMsg = error.message || "";
+    
+    if (apiMsg.includes("not found")) {
+      throw new Error("Erro de Versão de Modelo (404). O Google ainda está propagando o modelo gemini-3-flash-preview para sua região.");
     }
-    throw new Error(error.message || "Erro inesperado ao processar exegese.");
+    if (apiMsg.includes("API key not valid")) {
+      throw new Error("Chave de API Inválida. Verifique sua configuração no Vercel.");
+    }
+    
+    throw new Error(apiMsg || "Falha na comunicação com o servidor teológico.");
   }
 };
 
 export const generateHistoricalImage = async (prompt: string): Promise<string | null> => {
   try {
     const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    // MODELO: gemini-2.5-flash-image (Oficial para geração de imagens)
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: { 
-        parts: [{ text: `High quality archaeological reconstruction, biblical period, museum style, realistic: ${prompt}` }] 
+        parts: [{ text: `Biblical archaeological scene, ultra realistic, cinematic lighting, ancient world atmosphere: ${prompt}` }] 
       },
       config: {
         imageConfig: {
@@ -119,7 +133,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
     }
     return null;
   } catch (error) {
-    console.warn("Falha na geração de imagem:", error);
+    console.warn("Geração de imagem falhou:", error);
     return null;
   }
 };
@@ -127,6 +141,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
 export const playAudio = async (text: string, voice: string = 'Kore'): Promise<AudioControl | null> => {
   try {
     const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    // MODELO: gemini-2.5-flash-preview-tts (Oficial para conversão texto-voz)
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text }] }],
@@ -159,7 +174,7 @@ export const playAudio = async (text: string, voice: string = 'Kore'): Promise<A
       };
     }
   } catch (error) {
-    console.error("Erro no áudio:", error);
+    console.error("Falha no TTS:", error);
   }
   return null;
 };

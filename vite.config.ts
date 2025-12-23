@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Injeta a API_KEY do ambiente ou mantém nulo para o fallback interno do geminiService lidar
+    // Garante que process.env.API_KEY esteja disponível no frontend
     'process.env.API_KEY': JSON.stringify(process.env.API_KEY || ''),
   },
   base: './',
