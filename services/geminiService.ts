@@ -2,11 +2,10 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ExegesisResult } from "../types";
 
-// Inicialização segura
 const getAI = () => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error("API_KEY não encontrada. Verifique as configurações do ambiente.");
+    throw new Error("API_KEY não configurada.");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -49,11 +48,13 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Realize uma exegese bíblica acadêmica, arqueológica e histórica profunda sobre: "${query}". 
-    Analise o contexto sociopolítico, termos originais (Grego/Hebraico) e traga implicações teológicas contemporâneas.`,
+    contents: `Realize uma exegese bíblica e análise de contexto da época sobre: "${query}".`,
     config: {
-      systemInstruction: "Você é um mestre em exegese bíblica e história do Oriente Próximo. Responda estritamente em JSON.",
+      systemInstruction: `Você é um historiador e teólogo. Forneça uma análise profunda. 
+      Sempre inclua o JSON no formato especificado. 
+      Use ferramentas de busca se necessário para detalhes arqueológicos recentes.`,
       responseMimeType: "application/json",
+      tools: [{ googleSearch: {} }],
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -81,17 +82,34 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
   });
 
   const text = response.text;
-  if (!text) throw new Error("A IA não retornou dados de texto.");
-  return JSON.parse(text) as ExegesisResult;
+  if (!text) throw new Error("A IA não retornou o conteúdo esperado.");
+  
+  const result = JSON.parse(text) as ExegesisResult;
+  
+  // Extrair fontes da fundamentação (grounding)
+  const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+  if (groundingChunks) {
+    result.sources = groundingChunks
+      .filter((chunk: any) => chunk.web)
+      .map((chunk: any) => ({
+        uri: chunk.web.uri,
+        title: chunk.web.title
+      }));
+  }
+
+  return result;
 };
 
 export const generateHistoricalImage = async (prompt: string): Promise<string | null> => {
   try {
     const ai = getAI();
+    // Prompt otimizado para evitar restrições de segurança de rostos reais e focar em arte/arqueologia
+    const safetyPrompt = `Historical digital painting of ${prompt}. Ancient architectural style, archaeological reconstruction, cinematic lighting, 8k, detailed textures. No modern elements.`;
+    
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: `Digital matte painting, historical biblical reconstruction, cinematic lighting, 8k resolution, archaeological detail: ${prompt}` }]
+        parts: [{ text: safetyPrompt }]
       },
       config: {
         imageConfig: {
@@ -109,7 +127,7 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
     }
     return null;
   } catch (error) {
-    console.error("Falha na geração de imagem:", error);
+    console.error("Erro na imagem:", error);
     return null;
   }
 };
@@ -123,7 +141,7 @@ export const playAudio = async (
     const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Leia com solenidade acadêmica: ${text}` }] }],
+      contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
