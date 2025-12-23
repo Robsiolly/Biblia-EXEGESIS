@@ -5,10 +5,6 @@ export interface AudioControl {
   setSpeed: (speed: number) => void;
 }
 
-/**
- * Chama o backend centralizado. 
- * Em produção no Netlify, /api/exegesis é redirecionado para a função exegesis.
- */
 const callBackend = async (action: string, payload: any) => {
   try {
     const response = await fetch('/api/exegesis', {
@@ -19,23 +15,27 @@ const callBackend = async (action: string, payload: any) => {
       body: JSON.stringify({ action, payload }),
     });
 
+    if (response.status === 404) {
+      throw new Error("Serviço de IA não encontrado. Verifique se o deploy das funções foi concluído.");
+    }
+
     const responseText = await response.text();
     
     let data;
     try {
       data = JSON.parse(responseText);
     } catch (e) {
-      console.error("Resposta do servidor não é JSON:", responseText);
-      throw new Error(`Erro de comunicação com o servidor AI.`);
+      console.error("Resposta inválida do servidor:", responseText);
+      throw new Error(`O servidor retornou uma resposta inválida. Detalhes: ${responseText.substring(0, 100)}...`);
     }
 
     if (!response.ok) {
-      throw new Error(data?.details || data?.error || `Erro do servidor (${response.status})`);
+      throw new Error(data?.details || data?.error || `Erro do servidor AI (Status: ${response.status})`);
     }
 
     return data;
   } catch (error: any) {
-    console.error(`Erro no GeminiService [${action}]:`, error.message);
+    console.error(`Falha no GeminiService [${action}]:`, error.message);
     throw error;
   }
 };

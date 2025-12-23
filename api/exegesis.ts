@@ -1,9 +1,5 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 
-/**
- * Handler para Netlify Functions.
- * O arquivo api/exegesis.ts se torna a função "exegesis".
- */
 export const handler = async (event: any) => {
   const headers = {
     "Content-Type": "application/json",
@@ -12,27 +8,16 @@ export const handler = async (event: any) => {
     "Access-Control-Allow-Methods": "POST, OPTIONS"
   };
 
-  // Preflight para CORS
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
 
-  // Apenas POST é aceito
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ error: 'Método não permitido.' }),
-    };
-  }
-
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    console.error("API_KEY não configurada no Netlify");
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: 'Configuração ausente: API_KEY no ambiente.' }),
+      body: JSON.stringify({ error: 'Configuração Incompleta', details: 'A chave API_KEY não foi configurada no ambiente do servidor.' }),
     };
   }
 
@@ -40,17 +25,19 @@ export const handler = async (event: any) => {
     const body = JSON.parse(event.body || '{}');
     const { action, payload } = body;
     
-    // Inicializa o cliente Gemini
     const ai = new GoogleGenAI({ apiKey });
 
     switch (action) {
       case 'getExegesis':
+        // Usamos Flash para velocidade em ambiente serverless (evita timeout de 10s)
         const exegesisRes = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
-          contents: `Forneça uma exegese técnica e histórica profunda sobre: "${payload?.query}". Foque na cultura da época e línguas originais.`,
+          contents: `Realize uma exegese bíblica acadêmica e histórica profunda sobre: "${payload?.query}". 
+          Forneça contexto sociopolítico, termos no original e implicações teológicas.`,
           config: {
-            systemInstruction: "Você é um perito acadêmico em exegese bíblica e arqueologia. Responda APENAS com JSON puro seguindo o esquema estruturado.",
+            systemInstruction: "Você é um professor de exegese bíblica acadêmica. Responda estritamente em JSON puro, sem formatação markdown.",
             responseMimeType: "application/json",
+            temperature: 0.7,
             responseSchema: {
               type: Type.OBJECT,
               properties: {
@@ -66,7 +53,8 @@ export const handler = async (event: any) => {
                       term: { type: Type.STRING },
                       transliteration: { type: Type.STRING },
                       meaning: { type: Type.STRING },
-                    }
+                    },
+                    required: ["term", "transliteration", "meaning"]
                   }
                 },
                 imagePrompt: { type: Type.STRING },
@@ -76,17 +64,24 @@ export const handler = async (event: any) => {
           }
         });
         
+        const text = exegesisRes.text;
+        if (!text) throw new Error("A IA retornou uma resposta vazia.");
+
         return { 
           statusCode: 200, 
           headers, 
-          body: exegesisRes.text || "{}" 
+          body: text 
         };
 
       case 'generateImage':
         const imgRes = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
-          contents: { parts: [{ text: `Reconstrução histórica bíblica cinematográfica: ${payload?.prompt}` }] }
+          contents: { parts: [{ text: `Biblical historical reconstruction, cinematic, cinematic lighting, 8k, archaeological accuracy: ${payload?.prompt}` }] },
+          config: {
+            imageConfig: { aspectRatio: "16:9" }
+          }
         });
+        
         const imgPart = imgRes.candidates?.[0]?.content?.parts.find(p => p.inlineData);
         return { 
           statusCode: 200, 
@@ -115,20 +110,16 @@ export const handler = async (event: any) => {
         };
 
       default:
-        return { 
-          statusCode: 400, 
-          headers, 
-          body: JSON.stringify({ error: 'Ação inválida.' }) 
-        };
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Ação Inválida' }) };
     }
   } catch (err: any) {
-    console.error("Erro na função:", err);
+    console.error("Erro Crítico na API:", err);
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({ 
-        error: 'Erro no processamento da IA', 
-        details: err.message 
+        error: 'Falha na Análise', 
+        details: err.message || 'Erro desconhecido'
       }),
     };
   }
