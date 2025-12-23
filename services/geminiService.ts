@@ -4,21 +4,36 @@ import { ExegesisResult } from "../types";
 
 /**
  * SERVIÇO DE CONEXÃO COM GOOGLE GEMINI API
- * Versão: 2.1.0 - Estável
+ * Versão: 2.2.0 - Alta Estabilidade
  */
 
 const FALLBACK_KEY = "AIzaSyBWM5U5JaDhVN45ZXMFnbuL0GW4fI5xqm0";
 
 const getApiKey = () => {
-  // Tenta obter do ambiente do Vercel/Vite
   const envKey = process.env.API_KEY;
-  
-  // Verifica se a chave é válida (não vazia e não é o nome da própria variável)
   if (!envKey || envKey === "" || envKey === "process.env.API_KEY") {
-    console.warn("Utilizando chave de fallback. Verifique as variáveis de ambiente no Vercel.");
     return FALLBACK_KEY;
   }
   return envKey;
+};
+
+// Função de utilidade para re-tentativa com espera (Exponential Backoff)
+const fetchWithRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const isRetryable = error.message?.includes("500") || 
+                        error.message?.includes("503") || 
+                        error.message?.includes("429") ||
+                        error.message?.includes("fetch");
+    
+    if (retries > 0 && isRetryable) {
+      console.warn(`Instabilidade detectada. Tentando novamente em ${delay}ms... (${retries} tentativas restantes)`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return fetchWithRetry(fn, retries - 1, delay * 2);
+    }
+    throw error;
+  }
 };
 
 export interface AudioControl {
@@ -56,15 +71,15 @@ const decodeRawPCM = async (
 };
 
 export const getExegesis = async (query: string): Promise<ExegesisResult> => {
-  try {
+  return fetchWithRetry(async () => {
     const ai = new GoogleGenAI({ apiKey: getApiKey() });
     
-    // MODELO: gemini-3-flash-preview (Oficial para tarefas de texto e lógica)
+    // MODELO: gemini-3-pro-preview (Superior para tarefas complexas de exegese)
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Realize uma exegese teológica profunda e análise de contexto histórico da época para: "${query}".`,
+      model: 'gemini-3-pro-preview',
+      contents: `Forneça uma exegese teológica exaustiva e análise contextual histórica para: "${query}".`,
       config: {
-        systemInstruction: "Você é um especialista em línguas originais bíblicas (Hebraico, Aramaico e Grego) e Arqueologia. Responda estritamente em JSON.",
+        systemInstruction: "Você é um professor PhD em Exegese Bíblica e Arqueologia do Oriente Médio. Sua resposta deve ser exclusivamente em formato JSON válido.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -93,31 +108,18 @@ export const getExegesis = async (query: string): Promise<ExegesisResult> => {
     });
 
     const text = response.text;
-    if (!text) throw new Error("Resposta da IA vazia.");
+    if (!text) throw new Error("A IA retornou um corpo de texto vazio.");
     return JSON.parse(text) as ExegesisResult;
-  } catch (error: any) {
-    console.error("Erro Crítico Gemini API:", error);
-    const apiMsg = error.message || "";
-    
-    if (apiMsg.includes("not found")) {
-      throw new Error("Erro de Versão de Modelo (404). O Google ainda está propagando o modelo gemini-3-flash-preview para sua região.");
-    }
-    if (apiMsg.includes("API key not valid")) {
-      throw new Error("Chave de API Inválida. Verifique sua configuração no Vercel.");
-    }
-    
-    throw new Error(apiMsg || "Falha na comunicação com o servidor teológico.");
-  }
+  });
 };
 
 export const generateHistoricalImage = async (prompt: string): Promise<string | null> => {
-  try {
+  return fetchWithRetry(async () => {
     const ai = new GoogleGenAI({ apiKey: getApiKey() });
-    // MODELO: gemini-2.5-flash-image (Oficial para geração de imagens)
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: { 
-        parts: [{ text: `Biblical archaeological scene, ultra realistic, cinematic lighting, ancient world atmosphere: ${prompt}` }] 
+        parts: [{ text: `Authentic biblical era archaeological reconstruction, high resolution, historical accuracy: ${prompt}` }] 
       },
       config: {
         imageConfig: {
@@ -132,16 +134,12 @@ export const generateHistoricalImage = async (prompt: string): Promise<string | 
       }
     }
     return null;
-  } catch (error) {
-    console.warn("Geração de imagem falhou:", error);
-    return null;
-  }
+  }).catch(() => null); // Imagem é opcional, não trava o app se falhar após retentativas
 };
 
 export const playAudio = async (text: string, voice: string = 'Kore'): Promise<AudioControl | null> => {
   try {
     const ai = new GoogleGenAI({ apiKey: getApiKey() });
-    // MODELO: gemini-2.5-flash-preview-tts (Oficial para conversão texto-voz)
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text }] }],
@@ -158,6 +156,12 @@ export const playAudio = async (text: string, voice: string = 'Kore'): Promise<A
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      
+      // Garante que o AudioContext esteja ativo (browsers bloqueiam auto-play)
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+
       const bytes = decodeBase64(base64Audio);
       const audioBuffer = await decodeRawPCM(bytes, audioContext, 24000, 1);
       
@@ -174,7 +178,7 @@ export const playAudio = async (text: string, voice: string = 'Kore'): Promise<A
       };
     }
   } catch (error) {
-    console.error("Falha no TTS:", error);
+    console.error("Falha na reprodução de áudio:", error);
   }
   return null;
 };
